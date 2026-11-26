@@ -115,6 +115,9 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     private OkHttpClient mOkHttpClient;
     private SharedPreferences sharedPreferences;
 
+    /* 更新检测总开关：待本仓库发布稳定版本后置为 true 接入（checkUpdateVersion 指向本仓库 Releases） */
+    private static final boolean UPDATE_CHECK_ENABLED = false;
+
     /*============================== 主界面地图 相关 ==============================*/
     /************** 地图 *****************/
     public final static BitmapDescriptor mMapIndicator = BitmapDescriptorFactory.fromResource(R.drawable.icon_gcoding);
@@ -205,9 +208,11 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
 
         initSearchView();
 
-        initUpdateVersion();
+        if (UPDATE_CHECK_ENABLED) {
+            initUpdateVersion();
 
-        checkUpdateVersion(false);
+            checkUpdateVersion(false);
+        }
     }
 
     @Override
@@ -244,7 +249,9 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
             Intent serviceGoIntent = new Intent(MainActivity.this, ServiceGo.class);
             stopService(serviceGoIntent);
         }
-        unregisterReceiver(mDownloadBdRcv);
+        if (UPDATE_CHECK_ENABLED) {
+            unregisterReceiver(mDownloadBdRcv);
+        }
 
         mSensorManager.unregisterListener(this);
 
@@ -413,15 +420,15 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                         GoUtils.DisplayToast(this, getResources().getString(R.string.app_error_dev));
                     }
                 }
-            } else if (id == R.id.nav_update) {
-                checkUpdateVersion(true);
+            /* 检测更新入口已随菜单项移除，待稳定版发布后恢复（预留 checkUpdateVersion） */
             } else if (id == R.id.nav_feedback) {
-                File file = new File(getExternalFilesDir("Logs"), GoApplication.LOG_FILE_NAME);
-                ShareUtils.shareFile(this, file, item.getTitle().toString());
+                // 问题反馈：跳转本仓库 Issues
+                Uri issueUri = Uri.parse("https://github.com/fejxc/GoGoGo/issues");
+                startActivity(new Intent(Intent.ACTION_VIEW, issueUri));
             } else if (id == R.id.nav_contact) {
-                Uri uri = Uri.parse("https://gitee.com/itexp/gogogo/issues");
-                Intent intent = new Intent(Intent.ACTION_VIEW, uri);
-                startActivity(intent);
+                // 联系作者：跳转本仓库主页
+                Uri contactUri = Uri.parse("https://github.com/fejxc/GoGoGo");
+                startActivity(new Intent(Intent.ACTION_VIEW, contactUri));
             }
 
             DrawerLayout drawer = findViewById(R.id.drawer_layout);

@@ -27,10 +27,7 @@
 
     <item android:title="@string/nav_menu_more">
         <menu>
-            <item
-                android:id="@+id/nav_update"
-                android:icon="@drawable/ic_menu_upgrade"
-                android:title="@string/nav_menu_upgrade" />
+            <!-- 检测更新：待发布稳定版后接入（MainActivity 中已预留 checkUpdateVersion） -->
             <item
                 android:id="@+id/nav_feedback"
                 android:icon="@drawable/ic_menu_feedback"

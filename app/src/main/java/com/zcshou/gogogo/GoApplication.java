@@ -19,7 +19,7 @@ import com.elvishew.xlog.printer.file.naming.ChangelessFileNameGenerator;
 import java.io.File;
 
 public class GoApplication extends Application {
-    public static final String APP_NAME = "GoGoGo";
+    public static final String APP_NAME = "AnyGo";
     public static final String LOG_FILE_NAME = APP_NAME + ".log";
     private static final long MAX_TIME = 1000 * 60 * 60 * 24 * 3; // 3 days
 

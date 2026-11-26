@@ -109,9 +109,9 @@ android {
             if (outputFile != null && outputFile.name.endsWith('.apk')) {
                 def fileName
                 if (variant.buildType.name == 'release') {
-                    fileName = "Go_${defaultConfig.versionName}_arm64-v8a_release.apk"
+                    fileName = "AnyGo_${defaultConfig.versionName}_arm64-v8a_release.apk"
                 } else {
-                    fileName = "Go_${defaultConfig.versionName}_arm64-v8a_debug.apk"
+                    fileName = "AnyGo_${defaultConfig.versionName}_arm64-v8a_debug.apk"
                 }
                 outputFileName=fileName
             }
