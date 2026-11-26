@@ -15,62 +15,41 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # https://github.com/marketplace/actions/checkout
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       # 设置 JDK
       - name: set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
           cache: gradle
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
       - name: Get Tag
         id: var
         run: echo "tag=${GITHUB_REF#refs/*/}" >> $GITHUB_OUTPUT
 
-      # 创建 local.properties 文件
+      # 创建 local.properties（高德 Key 从仓库 Secrets 注入；未配置时为空值也可构建）
       - name: Create local.properties
         run: |
           cat << EOF > local.properties
+          sdk.dir=${ANDROID_HOME}
           MAPS_API_KEY=${{ secrets.MAPS_API_KEY }}
-          MAPS_SAFE_CODE=${{ secrets.MAPS_SAFE_CODE }}
           EOF
 
       - name: Build APK
-        run: bash ./gradlew assembleRelease
+        run: bash ./gradlew assembleRelease --no-daemon
 
-      - name: Get Build Tool Version
-        shell: bash
-        run: |
-          BUILD_TOOL_VERSION=$(ls /usr/local/lib/android/sdk/build-tools/ | tail -n 1)
-          echo "BUILD_TOOL_VERSION=$BUILD_TOOL_VERSION" >> $GITHUB_ENV
-          echo Last build tool version is: $BUILD_TOOL_VERSION
-
-      # https://github.com/marketplace/actions/sign-android-release
-      - name: Sign APK
-        id: sign_apk
-        uses: r0adkll/sign-android-release@v1
-        with:
-          releaseDirectory: app/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
-          alias: ${{ secrets.ALIAS }}
-          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
-        env:
-          BUILD_TOOLS_VERSION: ${{ env.BUILD_TOOL_VERSION }}
-
-      - name: Get Signed APK Name
-        run: |
-          FULL_PATH=${{steps.sign_apk.outputs.signedReleaseFile}}
-          FILENAME=$(basename "$FULL_PATH")
-          echo "FILENAME=${FILENAME}" >> $GITHUB_ENV  # 存储到环境变量
-
+      # APK 已由仓库内 keystore/GoGoGo.jks 签名（gradle signingConfigs.release）
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.FILENAME }}
-          path: ${{steps.sign_apk.outputs.signedReleaseFile}}
+          name: apk-release
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
 
       # https://github.com/marketplace/actions/auto-changelog
       # require commit format are "type(category): description [flag]"
@@ -96,18 +75,10 @@ jobs:
           mention-new-contributors: true
           include-compare-link    : true
 
-      - name: Upload Changelog
-        uses: actions/upload-artifact@v4
-        with:
-          name: Changelog
-          path: ${{ steps.changelog.outputs.changelog }}
-
-      # https://github.com/marketplace/actions/gh-release
-      - name: Release APK
-        uses: softprops/action-gh-release@v2.3.2
+      # 仅打标签时创建 Release（手动触发只做构建验证）
+      - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
         with:
-          token: ${{ github.token }}
+          files: app/build/outputs/apk/release/*.apk
           body: ${{ steps.changelog.outputs.changelog }}
-          prerelease: false
-          files: ${{steps.sign_apk.outputs.signedReleaseFile}}
