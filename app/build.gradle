@@ -14,7 +14,7 @@ android {
     ndkVersion = '26.2.11394342'
     compileSdk = 34
     buildToolsVersion = '36.0.0'
-    namespace = 'com.zcshou.gogogo'
+    namespace = 'com.sunyun.anygo'
 
     signingConfigs {
         debug {
@@ -32,12 +32,13 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.sunyun.gogogo"   // 高德 Key 需绑定此包名
+        // 安装包名：与高德控制台 Key 绑定一致，勿改动（内部源码包名 namespace 与之独立）
+        applicationId "com.sunyun.gogogo"
         minSdkVersion 27
         //noinspection ExpiredTargetSdkVersion
         targetSdkVersion 32
-        versionCode 1200
-        versionName '1.12.3-amap.1' // https://semver.org/lang/zh-CN/
+        versionCode 2000    // 内部递增号（须高于此前测试包的 1200，否则无法覆盖安装）
+        versionName '1.0.0' // https://semver.org/lang/zh-CN/
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         resourceConfigurations += ['zh', 'zh-rCN', 'en', 'en-rUS']
         ndk {

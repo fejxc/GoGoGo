@@ -1,4 +1,4 @@
-package com.zcshou.gogogo;
+package com.sunyun.anygo;
 
 import android.app.Application;
 

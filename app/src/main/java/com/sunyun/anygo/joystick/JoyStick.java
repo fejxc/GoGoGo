@@ -1,4 +1,4 @@
-package com.zcshou.joystick;
+package com.sunyun.anygo.joystick;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
@@ -35,12 +35,12 @@ import com.amap.api.maps.model.MarkerOptions;
 import com.amap.api.services.help.Inputtips;
 import com.amap.api.services.help.InputtipsQuery;
 import com.amap.api.services.help.Tip;
-import com.zcshou.database.DataBaseHistoryLocation;
-import com.zcshou.gogogo.HistoryActivity;
-import com.zcshou.gogogo.MainActivity;
-import com.zcshou.gogogo.R;
-import com.zcshou.utils.GoUtils;
-import com.zcshou.utils.MapUtils;
+import com.sunyun.anygo.database.DataBaseHistoryLocation;
+import com.sunyun.anygo.HistoryActivity;
+import com.sunyun.anygo.MainActivity;
+import com.sunyun.anygo.R;
+import com.sunyun.anygo.utils.GoUtils;
+import com.sunyun.anygo.utils.MapUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
