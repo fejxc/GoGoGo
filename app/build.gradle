@@ -32,7 +32,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.zcshou.gogogo"
+        applicationId "com.sunyun.gogogo"   // 高德 Key 需绑定此包名
         minSdkVersion 27
         //noinspection ExpiredTargetSdkVersion
         targetSdkVersion 32
