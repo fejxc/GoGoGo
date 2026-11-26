@@ -43,7 +43,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:checked="true"
-            android:text="@string/input_position_baidu" />
+            android:text="@string/input_position_gcj02" />
 
         <RadioButton
             android:layout_width="match_parent"

@@ -12,12 +12,24 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
-        <com.baidu.mapapi.map.MapView
-            android:id="@+id/bdMapView"
+        <com.amap.api.maps.MapView
+            android:id="@+id/mapView"
             android:layout_width="fill_parent"
             android:layout_height="fill_parent"
             android:clickable="true"
             android:focusable="true" />
+
+        <!-- 选中位置的信息面板（原百度 InfoWindow，因高德 InfoWindow 不支持子控件点击，改为底部面板） -->
+        <include
+            android:id="@+id/poi_panel"
+            layout="@layout/location_poi_info"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_alignParentBottom="true"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="8dp"
+            android:layout_marginBottom="40dp"
+            android:visibility="gone" />
 
         <RadioGroup
             android:id="@+id/RadioGroupMapType"

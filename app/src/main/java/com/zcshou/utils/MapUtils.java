@@ -19,6 +19,29 @@ public class MapUtils {
         return gcj02towgs84(bd2Gcj[0], bd2Gcj[1]);
     }
 
+    public static double[] gcj2wgs(double lon, double lat) {
+        return gcj02towgs84(lon, lat);
+    }
+
+    /**
+     * WGS84 转换为 GCJ-02（高德坐标系）
+     * @param lng   经度
+     * @param lat   纬度
+     * @return double[] 转换后的经度，纬度 数组
+     *
+     */
+    public static double[] wgs2gcj02(double lng, double lat) {
+        double dlat = transformLat(lng - 105.0, lat - 35.0);
+        double dlng = transformLon(lng - 105.0, lat - 35.0);
+        double radlat = lat / 180.0 * pi;
+        double magic = Math.sin(radlat);
+        magic = 1 - ee * magic * magic;
+        double sqrtmagic = Math.sqrt(magic);
+        dlat = (dlat * 180.0) / ((a * (1 - ee)) / (magic * sqrtmagic) * pi);
+        dlng = (dlng * 180.0) / (a / sqrtmagic * Math.cos(radlat) * pi);
+        return new double[] { lng + dlng, lat + dlat };
+    }
+
     /**
      * WGS84 转换为 BD-09
      * @param lng   经度

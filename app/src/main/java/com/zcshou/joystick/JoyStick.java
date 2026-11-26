@@ -24,16 +24,17 @@ import android.widget.SearchView;
 
 import androidx.preference.PreferenceManager;
 
-import com.baidu.mapapi.map.BaiduMap;
-import com.baidu.mapapi.map.MapPoi;
-import com.baidu.mapapi.map.MapStatus;
-import com.baidu.mapapi.map.MapStatusUpdateFactory;
-import com.baidu.mapapi.map.MapView;
-import com.baidu.mapapi.map.MarkerOptions;
-import com.baidu.mapapi.map.MyLocationData;
-import com.baidu.mapapi.model.LatLng;
-import com.baidu.mapapi.search.sug.SuggestionSearch;
-import com.baidu.mapapi.search.sug.SuggestionSearchOption;
+import com.amap.api.maps.AMap;
+import com.amap.api.maps.CameraUpdate;
+import com.amap.api.maps.CameraUpdateFactory;
+import com.amap.api.maps.TextureMapView;
+import com.amap.api.maps.model.BitmapDescriptorFactory;
+import com.amap.api.maps.model.CameraPosition;
+import com.amap.api.maps.model.LatLng;
+import com.amap.api.maps.model.MarkerOptions;
+import com.amap.api.services.help.Inputtips;
+import com.amap.api.services.help.InputtipsQuery;
+import com.amap.api.services.help.Tip;
 import com.zcshou.database.DataBaseHistoryLocation;
 import com.zcshou.gogogo.HistoryActivity;
 import com.zcshou.gogogo.MainActivity;
@@ -85,11 +86,11 @@ public class JoyStick extends View {
     private ListView mRecordListView;
     /* 地图悬浮窗相关 */
     private FrameLayout mMapLayout;
-    private MapView mMapView;
-    private BaiduMap mBaiduMap;
+    private TextureMapView mMapView;
+    private AMap mAMap;
     private LatLng mCurMapLngLat;
     private LatLng mMarkMapLngLat;
-    private SuggestionSearch mSuggestionSearch;
+    private Inputtips mInputtips;
     private ListView mSearchList;
     private LinearLayout mSearchLayout;
 
@@ -151,11 +152,11 @@ public class JoyStick extends View {
     }
 
     public void setCurrentPosition(double lng, double lat, double alt) {
-        double[] lngLat = MapUtils.wgs2bd09(lng, lat);
+        double[] lngLat = MapUtils.wgs2gcj02(lng, lat);
         mCurMapLngLat = new LatLng(lngLat[1], lngLat[0]);
         mAltitude = alt;
 
-        resetBaiduMap();
+        resetJoystickMap();
     }
 
     public void show() {
@@ -168,7 +169,7 @@ public class JoyStick extends View {
                     mWindowManager.removeView(mHistoryLayout);
                 }
                 if (mMapLayout.getParent() == null) {
-                    resetBaiduMap();
+                    resetJoystickMap();
                     mWindowManager.addView(mMapLayout, mWindowParamCurrent);
                 }
                 break;
@@ -224,7 +225,6 @@ public class JoyStick extends View {
             mWindowManager.removeViewImmediate(mHistoryLayout);
         }
 
-        mBaiduMap.setMyLocationEnabled(false);
         mMapView.onDestroy();
     }
 
@@ -438,43 +438,12 @@ public class JoyStick extends View {
 
         mSearchList = mMapLayout.findViewById(R.id.map_search_list_view);
         mSearchLayout = mMapLayout.findViewById(R.id.map_search_linear);
-        mSuggestionSearch = SuggestionSearch.newInstance();
-        mSuggestionSearch.setOnGetSuggestionResultListener(suggestionResult -> {
-            if (suggestionResult == null || suggestionResult.getAllSuggestions() == null) {
-                GoUtils.DisplayToast(mContext,getResources().getString(R.string.app_search_null));
-            } else {
-                List<Map<String, Object>> data = new ArrayList<>();
-                int retCnt = suggestionResult.getAllSuggestions().size();
-
-                for (int i = 0; i < retCnt; i++) {
-                    if (suggestionResult.getAllSuggestions().get(i).pt == null) {
-                        continue;
-                    }
-
-                    Map<String, Object> poiItem = new HashMap<>();
-                    poiItem.put(MainActivity.POI_NAME, suggestionResult.getAllSuggestions().get(i).key);
-                    poiItem.put(MainActivity.POI_ADDRESS, suggestionResult.getAllSuggestions().get(i).city + " " + suggestionResult.getAllSuggestions().get(i).district);
-                    poiItem.put(MainActivity.POI_LONGITUDE, "" + suggestionResult.getAllSuggestions().get(i).pt.longitude);
-                    poiItem.put(MainActivity.POI_LATITUDE, "" + suggestionResult.getAllSuggestions().get(i).pt.latitude);
-                    data.add(poiItem);
-                }
-
-                SimpleAdapter simAdapt = new SimpleAdapter(
-                        mContext,
-                        data,
-                        R.layout.search_poi_item,
-                        new String[] {MainActivity.POI_NAME, MainActivity.POI_ADDRESS, MainActivity.POI_LONGITUDE, MainActivity.POI_LATITUDE}, // 与下面数组元素要一一对应
-                        new int[] {R.id.poi_name, R.id.poi_address, R.id.poi_longitude, R.id.poi_latitude});
-                mSearchList.setAdapter(simAdapt);
-                mSearchLayout.setVisibility(View.VISIBLE);
-            }
-        });
         mSearchList.setOnItemClickListener((parent, view, position, id) -> {
             mSearchLayout.setVisibility(View.GONE);
 
             String lng = ((TextView) view.findViewById(R.id.poi_longitude)).getText().toString();
             String lat = ((TextView) view.findViewById(R.id.poi_latitude)).getText().toString();
-            markBaiduMap(new LatLng(Double.parseDouble(lat), Double.parseDouble(lng)));
+            markJoystickMap(new LatLng(Double.parseDouble(lat), Double.parseDouble(lng)));
         });
 
         TextView tips = mMapLayout.findViewById(R.id.joystick_map_tips);
@@ -507,15 +476,7 @@ public class JoyStick extends View {
             @Override
             public boolean onQueryTextChange(String newText) {
                 if (newText != null && newText.length() > 0) {
-                    try {
-                        mSuggestionSearch.requestSuggestion((new SuggestionSearchOption())
-                                .keyword(newText)
-                                .city(MainActivity.mCurrentCity)
-                        );
-                    } catch (Exception e) {
-                        GoUtils.DisplayToast(mContext,getResources().getString(R.string.app_error_search));
-                        e.printStackTrace();
-                    }
+                    requestSearchSuggestion(newText);
                 } else {
                     mSearchLayout.setVisibility(GONE);
                 }
@@ -543,10 +504,10 @@ public class JoyStick extends View {
                     mCurMapLngLat = mMarkMapLngLat;
                     mMarkMapLngLat = null;
 
-                    double[] lngLat = MapUtils.bd2wgs(mCurMapLngLat.longitude, mCurMapLngLat.latitude);
+                    double[] lngLat = MapUtils.gcj2wgs(mCurMapLngLat.longitude, mCurMapLngLat.latitude);
                     mListener.onPositionInfo(lngLat[0], lngLat[1], mAltitude);
 
-                    resetBaiduMap();
+                    resetJoystickMap();
 
                     GoUtils.DisplayToast(mContext, getResources().getString(R.string.app_location_ok));
                 }
@@ -571,86 +532,89 @@ public class JoyStick extends View {
         });
 
         ImageButton btnBack = mMapLayout.findViewById(R.id.btnBack);
-        btnBack.setOnClickListener(v -> resetBaiduMap());
+        btnBack.setOnClickListener(v -> resetJoystickMap());
         btnBack.setColorFilter(getResources().getColor(R.color.colorAccent, mContext.getTheme()));
 
-        initBaiduMap();
+        initJoystickMap();
     }
 
-    private void initBaiduMap() {
+    private void initJoystickMap() {
         mMapView = mMapLayout.findViewById(R.id.map_joystick);
-        mMapView.showZoomControls(false);
-        mBaiduMap = mMapView.getMap();
-        mBaiduMap.setMapType(BaiduMap.MAP_TYPE_NORMAL);
-        mBaiduMap.setMyLocationEnabled(true);
+        mMapView.onCreate(null);    // 悬浮窗无 Activity 生命周期，手动补 onCreate
+        mAMap = mMapView.getMap();
+        mAMap.setMapType(AMap.MAP_TYPE_NORMAL);
 
-        mBaiduMap.setOnMapTouchListener(event -> {
+        mAMap.setOnMapClickListener(this::markJoystickMap);
 
-        });
-
-        mBaiduMap.setOnMapClickListener(new BaiduMap.OnMapClickListener() {
-            /**
-             * 单击地图
-             */
-            @Override
-            public void onMapClick(LatLng point) {
-                markBaiduMap(point);
-            }
-
-            /**
-             * 单击地图中的POI点
-             */
-            @Override
-            public void onMapPoiClick(MapPoi poi) {
-                markBaiduMap(poi.getPosition());
-            }
-        });
-
-        mBaiduMap.setOnMapLongClickListener(new BaiduMap.OnMapLongClickListener() {
-            /**
-             * 长按地图
-             */
-            @Override
-            public void onMapLongClick(LatLng point) {
-                markBaiduMap(point);
-            }
-        });
-
-        mBaiduMap.setOnMapDoubleClickListener(new BaiduMap.OnMapDoubleClickListener() {
-            /**
-             * 双击地图
-             */
-            @Override
-            public void onMapDoubleClick(LatLng point) {
-                markBaiduMap(point);
-            }
-        });
+        mAMap.setOnMapLongClickListener(this::markJoystickMap);
     }
 
-    private void resetBaiduMap() {
-        mBaiduMap.clear();
+    // 将当前模拟位置显示为蓝色点标记并移动视野
+    private void resetJoystickMap() {
+        if (mAMap == null || mCurMapLngLat == null) {
+            return;
+        }
 
-        MyLocationData locData = new MyLocationData.Builder()
-                .latitude(mCurMapLngLat.latitude)
-                .longitude(mCurMapLngLat.longitude)
-                .build();
-        mBaiduMap.setMyLocationData(locData);
+        mAMap.clear();
+        MarkerOptions curPos = new MarkerOptions().position(mCurMapLngLat)
+                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE));
+        mAMap.addMarker(curPos);
 
-        MapStatus.Builder builder = new MapStatus.Builder();
-        builder.target(mCurMapLngLat).zoom(18.0f);
-        mBaiduMap.animateMapStatus(MapStatusUpdateFactory.newMapStatus(builder.build()));
+        CameraUpdate update = CameraUpdateFactory.newCameraPosition(new CameraPosition(mCurMapLngLat, 18.0f, 0, 0));
+        mAMap.moveCamera(update);
     }
 
-    private void markBaiduMap(LatLng latLng) {
+    private void markJoystickMap(LatLng latLng) {
         mMarkMapLngLat = latLng;
 
         MarkerOptions ooA = new MarkerOptions().position(latLng).icon(MainActivity.mMapIndicator);
-        mBaiduMap.clear();
-        mBaiduMap.addOverlay(ooA);
+        mAMap.clear();
+        mAMap.addMarker(ooA);
 
-        MapStatus.Builder builder = new MapStatus.Builder();
-        builder.target(latLng).zoom(18.0f);
-        mBaiduMap.animateMapStatus(MapStatusUpdateFactory.newMapStatus(builder.build()));
+        CameraUpdate update = CameraUpdateFactory.newCameraPosition(new CameraPosition(latLng, 18.0f, 0, 0));
+        mAMap.moveCamera(update);
+    }
+
+    // 高德输入提示搜索
+    private void requestSearchSuggestion(String keyword) {
+        try {
+            InputtipsQuery query = new InputtipsQuery(keyword, MainActivity.mCurrentCity == null ? "" : MainActivity.mCurrentCity);
+            query.setCityLimit(false);      // 不严格限定当前城市
+            mInputtips = new Inputtips(mContext.getApplicationContext(), query);
+            mInputtips.setInputtipsListener((tips, rCode) -> {
+                if (rCode == 1000 && tips != null && !tips.isEmpty()) {
+                    List<Map<String, Object>> data = new ArrayList<>();
+
+                    for (Tip tip : tips) {
+                        if (tip.getPoint() == null) {
+                            continue;
+                        }
+
+                        Map<String, Object> poiItem = new HashMap<>();
+                        poiItem.put(MainActivity.POI_NAME, tip.getName());
+                        poiItem.put(MainActivity.POI_ADDRESS, tip.getDistrict());
+                        poiItem.put(MainActivity.POI_LONGITUDE, "" + tip.getPoint().getLongitude());
+                        poiItem.put(MainActivity.POI_LATITUDE, "" + tip.getPoint().getLatitude());
+                        data.add(poiItem);
+                    }
+
+                    SimpleAdapter simAdapt = new SimpleAdapter(
+                            mContext,
+                            data,
+                            R.layout.search_poi_item,
+                            new String[] {MainActivity.POI_NAME, MainActivity.POI_ADDRESS, MainActivity.POI_LONGITUDE, MainActivity.POI_LATITUDE}, // 与下面数组元素要一一对应
+                            new int[] {R.id.poi_name, R.id.poi_address, R.id.poi_longitude, R.id.poi_latitude});
+                    mSearchList.setAdapter(simAdapt);
+                    mSearchLayout.setVisibility(View.VISIBLE);
+                } else if (rCode != 1000) {
+                    GoUtils.DisplayToast(mContext, getResources().getString(R.string.app_error_search));
+                }
+            });
+            mInputtips.requestInputtipsAsyn();
+        } catch (Exception e) {
+            GoUtils.DisplayToast(mContext, getResources().getString(R.string.app_error_search));
+            e.printStackTrace();
+        }
     }
 
 
@@ -731,13 +695,13 @@ public class JoyStick extends View {
 
             mListener.onPositionInfo(Double.parseDouble(wgs84Longitude), Double.parseDouble(wgs84Latitude), mAltitude);
 
-            // 注意这里在选择位置之后需要刷新地图
-            String bdLatLng = (String) ((TextView) view.findViewById(R.id.BDLatLngText)).getText();
-            bdLatLng = bdLatLng.substring(bdLatLng.indexOf('[') + 1, bdLatLng.indexOf(']'));
-            String[] bdLatLngStr = bdLatLng.split(" ");
-            String bdLongitude = bdLatLngStr[0].substring(bdLatLngStr[0].indexOf(':') + 1);
-            String bdLatitude = bdLatLngStr[1].substring(bdLatLngStr[1].indexOf(':') + 1);
-            mCurMapLngLat = new LatLng(Double.parseDouble(bdLatitude), Double.parseDouble(bdLongitude));
+            // 注意这里在选择位置之后需要刷新地图（CUSTOM 列：GCJ-02 坐标）
+            String gcjLatLng = (String) ((TextView) view.findViewById(R.id.BDLatLngText)).getText();
+            gcjLatLng = gcjLatLng.substring(gcjLatLng.indexOf('[') + 1, gcjLatLng.indexOf(']'));
+            String[] gcjLatLngStr = gcjLatLng.split(" ");
+            String gcjLongitude = gcjLatLngStr[0].substring(gcjLatLngStr[0].indexOf(':') + 1);
+            String gcjLatitude = gcjLatLngStr[1].substring(gcjLatLngStr[1].indexOf(':') + 1);
+            mCurMapLngLat = new LatLng(Double.parseDouble(gcjLatitude), Double.parseDouble(gcjLongitude));
 
             GoUtils.DisplayToast(mContext, getResources().getString(R.string.app_location_ok));
         });
@@ -780,22 +744,22 @@ public class JoyStick extends View {
                 String Longitude = cursor.getString(2);
                 String Latitude = cursor.getString(3);
                 long TimeStamp = cursor.getInt(4);
-                String BD09Longitude = cursor.getString(5);
-                String BD09Latitude = cursor.getString(6);
-                Log.d("TB", ID + "\t" + Location + "\t" + Longitude + "\t" + Latitude + "\t" + TimeStamp + "\t" + BD09Longitude + "\t" + BD09Latitude);
+                String GcjLongitude = cursor.getString(5);
+                String GcjLatitude = cursor.getString(6);
+                Log.d("TB", ID + "\t" + Location + "\t" + Longitude + "\t" + Latitude + "\t" + TimeStamp + "\t" + GcjLongitude + "\t" + GcjLatitude);
                 BigDecimal bigDecimalLongitude = BigDecimal.valueOf(Double.parseDouble(Longitude));
                 BigDecimal bigDecimalLatitude = BigDecimal.valueOf(Double.parseDouble(Latitude));
-                BigDecimal bigDecimalBDLongitude = BigDecimal.valueOf(Double.parseDouble(BD09Longitude));
-                BigDecimal bigDecimalBDLatitude = BigDecimal.valueOf(Double.parseDouble(BD09Latitude));
+                BigDecimal bigDecimalGcjLongitude = BigDecimal.valueOf(Double.parseDouble(GcjLongitude));
+                BigDecimal bigDecimalGcjLatitude = BigDecimal.valueOf(Double.parseDouble(GcjLatitude));
                 double doubleLongitude = bigDecimalLongitude.setScale(11, RoundingMode.HALF_UP).doubleValue();
                 double doubleLatitude = bigDecimalLatitude.setScale(11, RoundingMode.HALF_UP).doubleValue();
-                double doubleBDLongitude = bigDecimalBDLongitude.setScale(11, RoundingMode.HALF_UP).doubleValue();
-                double doubleBDLatitude = bigDecimalBDLatitude.setScale(11, RoundingMode.HALF_UP).doubleValue();
+                double doubleGcjLongitude = bigDecimalGcjLongitude.setScale(11, RoundingMode.HALF_UP).doubleValue();
+                double doubleGcjLatitude = bigDecimalGcjLatitude.setScale(11, RoundingMode.HALF_UP).doubleValue();
                 item.put(HistoryActivity.KEY_ID, Integer.toString(ID));
                 item.put(HistoryActivity.KEY_LOCATION, Location);
                 item.put(HistoryActivity.KEY_TIME, GoUtils.timeStamp2Date(Long.toString(TimeStamp)));
                 item.put(HistoryActivity.KEY_LNG_LAT_WGS, "[经度:" + doubleLongitude + " 纬度:" + doubleLatitude + "]");
-                item.put(HistoryActivity.KEY_LNG_LAT_CUSTOM, "[经度:" + doubleBDLongitude + " 纬度:" + doubleBDLatitude + "]");
+                item.put(HistoryActivity.KEY_LNG_LAT_CUSTOM, "[经度:" + doubleGcjLongitude + " 纬度:" + doubleGcjLatitude + "]");
                 mAllRecord.add(item);
             }
             cursor.close();
