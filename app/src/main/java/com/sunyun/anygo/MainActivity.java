@@ -452,7 +452,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         mAMap.setMapType(AMap.MAP_TYPE_NORMAL);
         // 定位蓝点图层：位置由 initMapLocation 中的高德定位回调经 LocationSource 送入
         MyLocationStyle myLocationStyle = new MyLocationStyle();
-        myLocationStyle.myLocationType(MyLocationStyle.LOCATION_TYPE_SHOW);
+        myLocationStyle.myLocationType(MyLocationStyle.LOCATION_TYPE_LOCATION_ROTATE);   // 蓝色箭头随手机朝向旋转
         myLocationStyle.interval(1000);
         mAMap.setMyLocationStyle(myLocationStyle);
         mAMap.setLocationSource(new LocationSource() {
@@ -574,7 +574,8 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                 mCurrentLat = location.getLatitude();
                 mCurrentLon = location.getLongitude();
 
-                // 通过 LocationSource 回调刷新定位蓝点
+                // 通过 LocationSource 回调刷新定位蓝点；bearing 取自传感器方向，蓝点随之旋转
+                location.setBearing(mCurrentDirection);
                 if (mLocationChangedListener != null) {
                     mLocationChangedListener.onLocationChanged(location);
                 }
@@ -704,8 +705,13 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         mMarkLatLngMap = null;
 
         // 定位蓝点由 LocationSource 回调自动刷新，这里只需移动视野
-        CameraUpdate update = CameraUpdateFactory.newCameraPosition(new CameraPosition(new LatLng(mCurrentLat, mCurrentLon), 18.0f, 0, 0));
-        mAMap.animateCamera(update);
+        // 未完成首次定位时当前坐标为 (0,0)，不做移动，避免视野飞到赤道几内亚湾
+        if (mCurrentLat != 0.0 || mCurrentLon != 0.0) {
+            CameraUpdate update = CameraUpdateFactory.newCameraPosition(new CameraPosition(new LatLng(mCurrentLat, mCurrentLon), 18.0f, 0, 0));
+            mAMap.animateCamera(update);
+        } else {
+            GoUtils.DisplayToast(this, getResources().getString(R.string.app_location_locating));
+        }
     }
 
     // 在地图上显示位置（参数坐标系：GCJ-02，来源为历史记录 CUSTOM 列）

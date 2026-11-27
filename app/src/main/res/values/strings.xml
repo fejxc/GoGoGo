@@ -122,6 +122,7 @@
     <string name="input_position_gps">GPS 坐标系</string>
     <string name="input_button">输入位置</string>
     <string name="cur_position">返回当前位置</string>
+    <string name="app_location_locating">正在定位中，请稍候…</string>
     <string name="zoom_in">放大</string>
     <string name="zoom_out">缩小</string>
 
