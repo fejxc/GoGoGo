@@ -66,6 +66,15 @@ public class ServiceGo extends Service {
     private double mCurAlt = DEFAULT_ALT;
     private float mCurBea = DEFAULT_BEA;
     private double mSpeed = 1.2;        /* 默认的速度，单位 m/s */
+    /* 模拟数据合理性：摇杆位移平滑步进 + 速度按实际位移计算 + 精度/卫星数随机化 */
+    private final java.util.Random mRandom = new java.util.Random();
+    private double mStepLng = 0;        // 每 100ms 步进的经度增量（摇杆 1s 位移的 1/10）
+    private double mStepLat = 0;
+    private int mStepsRemaining = 0;
+    private double mPrevLng = 0;        // 上一次注入的位置（用于计算实际位移）
+    private double mPrevLat = 0;
+    private boolean mJumpFlag = true;   // 初始化/传送跳变后，首个 tick 速度置 0
+    private float mCurSpeed = 0f;       // 当前 tick 注入的速度
     private static final int HANDLER_MSG_ID = 0;
     private static final String SERVICE_GO_HANDLER_NAME = "ServiceGoLocation";
     private LocationManager mLocManager;
@@ -124,6 +133,8 @@ public class ServiceGo extends Service {
             mCurLng = intent.getDoubleExtra(MainActivity.LNG_MSG_ID, DEFAULT_LNG);
             mCurLat = intent.getDoubleExtra(MainActivity.LAT_MSG_ID, DEFAULT_LAT);
             mCurAlt = intent.getDoubleExtra(MainActivity.ALT_MSG_ID, DEFAULT_ALT);
+            mJumpFlag = true;
+            mStepsRemaining = 0;
         }
         sCurLng = mCurLng;
         sCurLat = mCurLat;
@@ -200,8 +211,10 @@ public class ServiceGo extends Service {
                 // Latitude: 1 deg = 110.574 km // 纬度的每度的距离大约为 110.574km
                 // Longitude: 1 deg = 111.320*cos(latitude) km  // 经度的每度的距离从0km到111km不等
                 // 具体见：http://wp.mlab.tw/?p=2200
-                mCurLng += disLng / (111.320 * Math.cos(Math.abs(mCurLat) * Math.PI / 180));
-                mCurLat += disLat / 110.574;
+                // 1s 位移拆成 10 个 100ms 步进：位置连续变化，速度曲线真实（原先每秒跳变一次）
+                mStepLng = disLng / (111.320 * Math.cos(Math.abs(mCurLat) * Math.PI / 180)) / 10.0;
+                mStepLat = disLat / 110.574 / 10.0;
+                mStepsRemaining = 10;
                 mCurBea = (float) angle;
             }
 
@@ -229,6 +242,24 @@ public class ServiceGo extends Service {
                     Thread.sleep(100);
 
                     if (!isStop) {
+                        // 推进摇杆平滑步进（每 tick 1/10 秒位移）
+                        if (mStepsRemaining > 0) {
+                            mCurLng += mStepLng;
+                            mCurLat += mStepLat;
+                            mStepsRemaining--;
+                        }
+
+                        // 速度按实际位移计算：静止=0，摇杆移动≈设定速度，传送跳变=0
+                        double disp = distanceMeters(mPrevLat, mPrevLng, mCurLat, mCurLng);
+                        if (mJumpFlag) {
+                            mCurSpeed = 0f;
+                            mJumpFlag = false;
+                        } else {
+                            mCurSpeed = (float) (disp / 0.1);
+                        }
+                        mPrevLng = mCurLng;
+                        mPrevLat = mCurLat;
+
                         setLocationNetwork();
                         setLocationGPS();
                         setLocationFused();
@@ -292,16 +323,16 @@ public class ServiceGo extends Service {
         try {
             // 尽可能模拟真实的 GPS 数据
             Location loc = new Location(LocationManager.GPS_PROVIDER);
-            loc.setAccuracy(Criteria.ACCURACY_FINE);    // 设定此位置的估计水平精度，以米为单位。
+            loc.setAccuracy(4f + mRandom.nextFloat() * 10f);   // 精度随机 4~14 米（真实 GPS 量级，恒 1 米过于完美）
             loc.setAltitude(mCurAlt);                     // 设置高度，在 WGS 84 参考坐标系中的米
             loc.setBearing(mCurBea);                       // 方向（度）
             loc.setLatitude(mCurLat);                   // 纬度（度）
             loc.setLongitude(mCurLng);                  // 经度（度）
             loc.setTime(System.currentTimeMillis());    // 本地时间
-            loc.setSpeed((float) mSpeed);
+            loc.setSpeed(mCurSpeed);                    // 实际位移速度（静止为 0）
             loc.setElapsedRealtimeNanos(SystemClock.elapsedRealtimeNanos());
             Bundle bundle = new Bundle();
-            bundle.putInt("satellites", 7);
+            bundle.putInt("satellites", 5 + mRandom.nextInt(8));   // 卫星数随机 5~12
             loc.setExtras(bundle);
 
             mLocManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, loc);
@@ -389,13 +420,13 @@ public class ServiceGo extends Service {
         }
         try {
             Location loc = new Location(LocationManager.FUSED_PROVIDER);
-            loc.setAccuracy(Criteria.ACCURACY_FINE);
+            loc.setAccuracy(4f + mRandom.nextFloat() * 10f);   // 精度随机 4~14 米
             loc.setAltitude(mCurAlt);
             loc.setBearing(mCurBea);
             loc.setLatitude(mCurLat);
             loc.setLongitude(mCurLng);
             loc.setTime(System.currentTimeMillis());
-            loc.setSpeed((float) mSpeed);
+            loc.setSpeed(mCurSpeed);
             loc.setElapsedRealtimeNanos(SystemClock.elapsedRealtimeNanos());
 
             mLocManager.setTestProviderLocation(LocationManager.FUSED_PROVIDER, loc);
@@ -408,19 +439,29 @@ public class ServiceGo extends Service {
         try {
             // 尽可能模拟真实的 NETWORK 数据
             Location loc = new Location(LocationManager.NETWORK_PROVIDER);
-            loc.setAccuracy(Criteria.ACCURACY_COARSE);  // 设定此位置的估计水平精度，以米为单位。
+            loc.setAccuracy(20f + mRandom.nextFloat() * 40f);  // 精度随机 20~60 米（真实基站/WiFi 量级）
             loc.setAltitude(mCurAlt);                     // 设置高度，在 WGS 84 参考坐标系中的米
             loc.setBearing(mCurBea);                       // 方向（度）
             loc.setLatitude(mCurLat);                   // 纬度（度）
             loc.setLongitude(mCurLng);                  // 经度（度）
             loc.setTime(System.currentTimeMillis());    // 本地时间
-            loc.setSpeed((float) mSpeed);
+            loc.setSpeed(mCurSpeed);
             loc.setElapsedRealtimeNanos(SystemClock.elapsedRealtimeNanos());
 
             mLocManager.setTestProviderLocation(LocationManager.NETWORK_PROVIDER, loc);
         } catch (Exception e) {
             XLog.e("SERVICEGO: ERROR - setLocationNetwork");
         }
+    }
+
+    /** 两点间球面距离（米），用于按实际位移计算速度 */
+    private static double distanceMeters(double lat1, double lng1, double lat2, double lng2) {
+        final double R = 6371000.0;
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLng = Math.toRadians(lng2 - lng1);
+        double h = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        return 2 * R * Math.asin(Math.sqrt(h));
     }
 
     public class NoteActionReceiver extends BroadcastReceiver {
@@ -445,6 +486,8 @@ public class ServiceGo extends Service {
             mCurLng = lng;
             mCurLat = lat;
             mCurAlt = alt;
+            mJumpFlag = true;           // 传送跳变：下一 tick 速度置 0，不产生瞬移速度尖峰
+            mStepsRemaining = 0;
             sCurLng = lng;
             sCurLat = lat;
             sCurAlt = alt;

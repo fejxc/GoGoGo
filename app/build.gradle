@@ -39,8 +39,8 @@ android {
         minSdkVersion 27
         //noinspection ExpiredTargetSdkVersion
         targetSdkVersion 32
-        versionCode 2002    // 内部递增号（须高于此前测试包的 1200，否则无法覆盖安装）
-        versionName '1.0.2' // https://semver.org/lang/zh-CN/
+        versionCode 2003    // 内部递增号（须高于此前测试包的 1200，否则无法覆盖安装）
+        versionName '1.0.3' // https://semver.org/lang/zh-CN/
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         resourceConfigurations += ['zh', 'zh-rCN', 'en', 'en-rUS']
         ndk {
