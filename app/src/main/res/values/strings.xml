@@ -127,6 +127,8 @@
     <string name="app_location_locating">正在定位中，请稍候…</string>
     <string name="status_mocking">● 模拟中 · %1$s</string>
     <string name="mock_marker_title">模拟位置</string>
+    <string name="mock_stop_title">停止模拟</string>
+    <string name="mock_stop_confirm">确定停止当前的位置模拟吗？</string>
     <string name="precheck_title">启动前检查</string>
     <string name="precheck_recheck">重新检测</string>
     <string name="precheck_close">关闭</string>

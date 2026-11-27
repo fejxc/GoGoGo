@@ -45,6 +45,8 @@ public class ServiceGo extends Service {
     public static double sCurAlt = DEFAULT_ALT;
     private static OnMockStatusListener sStatusListener;
     private static int sTick = 0;
+    private static boolean sFusedChecked = false;    // 当前机型是否已探测过 fused Provider
+    private static boolean sFusedAvailable = true;   // fused Provider 是否可用
 
     /** 模拟位置状态回调（约 1s 一次，子线程回调，消费方自行切主线程） */
     public interface OnMockStatusListener {
@@ -117,16 +119,19 @@ public class ServiceGo extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        mCurLng = intent.getDoubleExtra(MainActivity.LNG_MSG_ID, DEFAULT_LNG);
-        mCurLat = intent.getDoubleExtra(MainActivity.LAT_MSG_ID, DEFAULT_LAT);
-        mCurAlt = intent.getDoubleExtra(MainActivity.ALT_MSG_ID, DEFAULT_ALT);
+        // START_STICKY：进程被杀后系统以 null Intent 重启服务，沿用重启前的位置继续模拟
+        if (intent != null) {
+            mCurLng = intent.getDoubleExtra(MainActivity.LNG_MSG_ID, DEFAULT_LNG);
+            mCurLat = intent.getDoubleExtra(MainActivity.LAT_MSG_ID, DEFAULT_LAT);
+            mCurAlt = intent.getDoubleExtra(MainActivity.ALT_MSG_ID, DEFAULT_ALT);
+        }
         sCurLng = mCurLng;
         sCurLat = mCurLat;
         sCurAlt = mCurAlt;
 
         mJoyStick.setCurrentPosition(mCurLng, mCurLat, mCurAlt);
 
-        return super.onStartCommand(intent, flags, startId);
+        return START_STICKY;
     }
 
     @Override
@@ -339,6 +344,9 @@ public class ServiceGo extends Service {
     }
 
     private void removeTestProviderFused() {
+        if (!sFusedAvailable) {
+            return;
+        }
         try {
             if (mLocManager.isProviderEnabled(LocationManager.FUSED_PROVIDER)) {
                 mLocManager.setTestProviderEnabled(LocationManager.FUSED_PROVIDER, false);
@@ -352,6 +360,9 @@ public class ServiceGo extends Service {
 
     @SuppressLint("wrongconstant")
     private void addTestProviderFused() {
+        if (!sFusedAvailable && sFusedChecked) {
+            return;
+        }
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 mLocManager.addTestProvider(LocationManager.FUSED_PROVIDER, true, true,
@@ -363,13 +374,19 @@ public class ServiceGo extends Service {
                         true, Criteria.POWER_LOW, Criteria.ACCURACY_FINE);
             }
             mLocManager.setTestProviderEnabled(LocationManager.FUSED_PROVIDER, true);
+            sFusedChecked = true;
         } catch (Exception e) {
-            // 部分机型无 fused Provider，忽略
-            XLog.e("SERVICEGO: ERROR - addTestProviderFused");
+            // 部分机型无 fused Provider：只记一次日志，之后静默跳过（原先每 100ms 刷一条）
+            sFusedChecked = true;
+            sFusedAvailable = false;
+            XLog.e("SERVICEGO: fused Provider 不可用，已停用融合定位模拟");
         }
     }
 
     private void setLocationFused() {
+        if (!sFusedAvailable) {
+            return;
+        }
         try {
             Location loc = new Location(LocationManager.FUSED_PROVIDER);
             loc.setAccuracy(Criteria.ACCURACY_FINE);
@@ -428,8 +445,17 @@ public class ServiceGo extends Service {
             mCurLng = lng;
             mCurLat = lat;
             mCurAlt = alt;
-            mLocHandler.sendEmptyMessage(HANDLER_MSG_ID);
+            sCurLng = lng;
+            sCurLat = lat;
+            sCurAlt = alt;
             mJoyStick.setCurrentPosition(mCurLng, mCurLat, mCurAlt);
+            mLocHandler.sendEmptyMessage(HANDLER_MSG_ID);
+
+            // 立即通知监听方，传送后界面无需等待下一个 1s 节流周期
+            OnMockStatusListener l = sStatusListener;
+            if (l != null) {
+                l.onMockPosition(lng, lat, alt);
+            }
         }
     }
 }

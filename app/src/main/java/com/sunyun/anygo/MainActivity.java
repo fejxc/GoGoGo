@@ -20,6 +20,7 @@ import android.hardware.SensorManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.view.Gravity;
@@ -659,8 +660,9 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                 mCurrentLon = location.getLongitude();
 
                 // 通过 LocationSource 回调刷新定位蓝点；bearing 取自传感器方向，蓝点随之旋转
+                // 模拟期间蓝点由模拟位置驱动（见 onMockPositionUpdate），跳过真实定位避免回跳
                 location.setBearing(mCurrentDirection);
-                if (mLocationChangedListener != null) {
+                if (!isMockServStart && mLocationChangedListener != null) {
                     mLocationChangedListener.onLocationChanged(location);
                 }
 
@@ -835,6 +837,25 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     private void initGoBtn() {
         mButtonStart = findViewById(R.id.faBtnStart);
         mButtonStart.setOnClickListener(this::doGoLocation);
+        // 停止模拟改为长按 + 确认，避免模拟中无选点时误触停止
+        mButtonStart.setOnLongClickListener(v -> {
+            if (!isMockServStart) {
+                return false;
+            }
+
+            new AlertDialog.Builder(this)
+                    .setTitle(getResources().getString(R.string.mock_stop_title))
+                    .setMessage(getResources().getString(R.string.mock_stop_confirm))
+                    .setPositiveButton("确定", (d, w) -> {
+                        stopGoLocation();
+                        mButtonStart.setImageResource(R.drawable.ic_position);
+                        Snackbar.make(v, "模拟位置已终止", Snackbar.LENGTH_LONG)
+                                .setAction("Action", null).show();
+                    })
+                    .setNegativeButton("取消", null)
+                    .show();
+            return true;
+        });
     }
 
     /** 模拟位置回调（ServiceGo 子线程）：切主线程更新状态条与模拟标记，坐标 WGS84 -> GCJ02 显示 */
@@ -846,7 +867,8 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
             return;
         }
 
-        double[] gcj = MapUtils.gcj2wgs(lng, lat);
+        // 参数为 WGS-84（注入系统的模拟值），显示需转 GCJ-02
+        double[] gcj = MapUtils.wgs2gcj02(lng, lat);
         LatLng pos = new LatLng(gcj[1], gcj[0]);
         if (mMockMarker == null) {
             mMockMarker = mAMap.addMarker(new MarkerOptions().position(pos)
@@ -859,6 +881,17 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         mStatusChip.setText(getResources().getString(R.string.status_mocking,
                 String.format("%.5f, %.5f", lng, lat)));
         mStatusChip.setVisibility(View.VISIBLE);
+
+        // 蓝点跟随模拟位置：直接投递 GCJ-02 到定位图层（模拟期间真实定位不投递）
+        if (mLocationChangedListener != null) {
+            android.location.Location loc = new android.location.Location("anygo");
+            loc.setLatitude(pos.latitude);
+            loc.setLongitude(pos.longitude);
+            loc.setAccuracy(5.0f);
+            loc.setTime(System.currentTimeMillis());
+            loc.setElapsedRealtimeNanos(SystemClock.elapsedRealtimeNanos());
+            mLocationChangedListener.onLocationChanged(loc);
+        }
     }
 
     private void startGoLocation() {
@@ -903,10 +936,12 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
 
         if (isMockServStart) {
             if (mMarkLatLngMap == null) {
-                stopGoLocation();
-                Snackbar.make(v, "模拟位置已终止", Snackbar.LENGTH_LONG)
+                // 无选点 = 查看当前模拟位置（停止请长按 FAB）
+                onMockPositionUpdate(ServiceGo.sCurLng, ServiceGo.sCurLat);
+                mAMap.moveCamera(CameraUpdateFactory.newLatLngZoom(
+                        mMockMarker != null ? mMockMarker.getPosition() : new LatLng(mCurrentLat, mCurrentLon), 16f));
+                Snackbar.make(v, "模拟运行中 · 选择新位置后按▶传送，长按▶停止", Snackbar.LENGTH_LONG)
                         .setAction("Action", null).show();
-                mButtonStart.setImageResource(R.drawable.ic_position);
             } else {
                 double[] latLng = MapUtils.gcj2wgs(mMarkLatLngMap.longitude, mMarkLatLngMap.latitude);
                 double alt = Double.parseDouble(sharedPreferences.getString("setting_altitude", "55.0"));
@@ -916,7 +951,10 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
 
                 recordCurrentLocation(mMarkLatLngMap.longitude, mMarkLatLngMap.latitude);
 
-                mAMap.clear();
+                if (mUserMarker != null) {
+                    mUserMarker.remove();
+                    mUserMarker = null;
+                }
                 mMarkLatLngMap = null;
                 onMockPositionUpdate(ServiceGo.sCurLng, ServiceGo.sCurLat);
 
@@ -935,7 +973,10 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                         .setAction("Action", null).show();
 
                 recordCurrentLocation(mMarkLatLngMap.longitude, mMarkLatLngMap.latitude);
-                mAMap.clear();
+                if (mUserMarker != null) {
+                    mUserMarker.remove();
+                    mUserMarker = null;
+                }
                 mMarkLatLngMap = null;
                 onMockPositionUpdate(ServiceGo.sCurLng, ServiceGo.sCurLat);
 
