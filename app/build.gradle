@@ -16,18 +16,20 @@ android {
     buildToolsVersion = '36.0.0'
     namespace = 'com.sunyun.anygo'
 
+    // 签名：keystore 不入库（防伪造签名），路径与密码通过 local.properties 提供
+    // 本地: KEYSTORE_FILE/KEYSTORE_PASSWORD/KEY_ALIAS/KEY_PASSWORD
+    // CI  : 从仓库 Secret(SIGNING_KEY 等) 还原 keystore 后写入 local.properties（见 build-release.yml）
+    def ksFile = localProps.getProperty('KEYSTORE_FILE')
+    def ksExists = ksFile != null && file(ksFile).exists()
+
     signingConfigs {
-        debug {
-            storeFile file('../keystore/GoGoGo.jks')
-            storePassword 'GoGoGo'
-            keyAlias 'GoGoKey'
-            keyPassword 'GoGoGo'
-        }
-        release {
-            storeFile file('../keystore/GoGoGo.jks')
-            storePassword 'GoGoGo'
-            keyAlias 'GoGoKey'
-            keyPassword 'GoGoGo'
+        anygo {
+            if (ksExists) {
+                storeFile file(ksFile)
+                storePassword localProps.getProperty('KEYSTORE_PASSWORD')
+                keyAlias localProps.getProperty('KEY_ALIAS', 'anygo')
+                keyPassword localProps.getProperty('KEY_PASSWORD')
+            }
         }
     }
 
@@ -47,7 +49,6 @@ android {
         }
         // 注入高德 Key 到 AndroidManifest 的 meta-data 占位符
         manifestPlaceholders += [MAPS_API_KEY: amapApiKey]
-        signingConfig = signingConfigs.release
     }
 
     buildTypes {
@@ -65,11 +66,14 @@ android {
             // R8 configuration files.
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
 
-            signingConfig = signingConfigs.release
+            signingConfig = signingConfigs.anygo
             multiDexEnabled = true
         }
         debug {
-            signingConfig = signingConfigs.debug
+            if (ksExists) {
+                signingConfig = signingConfigs.anygo   // debug/release 同一私有 keystore，SHA1 一致
+            }
+            // 无 keystore 时回退 Android 默认 debug 签名
         }
     }
 
