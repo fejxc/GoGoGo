@@ -125,6 +125,10 @@
     <string name="app_location_locating">正在定位中，请稍候…</string>
     <string name="status_mocking">● 模拟中 · %1$s</string>
     <string name="mock_marker_title">模拟位置</string>
+    <string name="precheck_title">启动前检查</string>
+    <string name="precheck_recheck">重新检测</string>
+    <string name="precheck_close">关闭</string>
+    <string name="app_error_open_settings">无法打开对应设置页</string>
     <string name="zoom_in">放大</string>
     <string name="zoom_out">缩小</string>
 

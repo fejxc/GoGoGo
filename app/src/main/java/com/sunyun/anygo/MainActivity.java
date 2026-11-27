@@ -89,6 +89,7 @@ import java.util.Map;
 import com.sunyun.anygo.service.ServiceGo;
 import com.sunyun.anygo.database.DataBaseHistoryLocation;
 import com.sunyun.anygo.database.DataBaseHistorySearch;
+import com.sunyun.anygo.utils.PreconditionChecker;
 import com.sunyun.anygo.utils.ShareUtils;
 import com.sunyun.anygo.utils.GoUtils;
 import com.sunyun.anygo.utils.MapUtils;
@@ -832,19 +833,10 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     }
 
     private void doGoLocation(View v) {
-        if (!GoUtils.isNetworkAvailable(this)) {
-            GoUtils.DisplayToast(this, getResources().getString(R.string.app_error_network));
-            return;
-        }
-
-        if (!GoUtils.isGpsOpened(this)) {
-            GoUtils.showEnableGpsDialog(this);
-            return;
-        }
-
-        if (!Settings.canDrawOverlays(getApplicationContext())) {//悬浮窗权限判断
-            GoUtils.showEnableFloatWindowDialog(this);
-            XLog.e("无悬浮窗权限!");
+        // 前置条件自检：未通过则弹出检查清单（未满足项可点击直达对应设置页）
+        List<PreconditionChecker.Item> unmet = PreconditionChecker.checkUnmet(this);
+        if (!unmet.isEmpty()) {
+            showPreconditionDialog(unmet);
             return;
         }
 
@@ -872,30 +864,59 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                 }
             }
         } else {
-            if (!GoUtils.isAllowMockLocation(this)) {
-                GoUtils.showEnableMockLocationDialog(this);
-                XLog.e("无模拟位置权限!");
+            if (mMarkLatLngMap == null) {
+                Snackbar.make(v, "请先点击地图位置或者搜索位置", Snackbar.LENGTH_LONG)
+                        .setAction("Action", null).show();
             } else {
-                if (mMarkLatLngMap == null) {
-                    Snackbar.make(v, "请先点击地图位置或者搜索位置", Snackbar.LENGTH_LONG)
-                            .setAction("Action", null).show();
-                } else {
-                    startGoLocation();
-                    mButtonStart.setImageResource(R.drawable.ic_fly);
-                    Snackbar.make(v, "模拟位置已启动", Snackbar.LENGTH_LONG)
-                            .setAction("Action", null).show();
+                startGoLocation();
+                mButtonStart.setImageResource(R.drawable.ic_fly);
+                Snackbar.make(v, "模拟位置已启动", Snackbar.LENGTH_LONG)
+                        .setAction("Action", null).show();
 
-                    recordCurrentLocation(mMarkLatLngMap.longitude, mMarkLatLngMap.latitude);
-                    mAMap.clear();
-                    mMarkLatLngMap = null;
-                    onMockPositionUpdate(ServiceGo.sCurLng, ServiceGo.sCurLat);
+                recordCurrentLocation(mMarkLatLngMap.longitude, mMarkLatLngMap.latitude);
+                mAMap.clear();
+                mMarkLatLngMap = null;
+                onMockPositionUpdate(ServiceGo.sCurLng, ServiceGo.sCurLat);
 
-                    if (GoUtils.isWifiEnabled(MainActivity.this)) {
-                        GoUtils.showDisableWifiDialog(MainActivity.this);
-                    }
+                if (GoUtils.isWifiEnabled(MainActivity.this)) {
+                    GoUtils.showDisableWifiDialog(MainActivity.this);
                 }
             }
         }
+    }
+
+    /** 启动前置条件清单：未满足项标红，点击直达对应设置页；支持"重新检测" */
+    private void showPreconditionDialog(List<PreconditionChecker.Item> unmet) {
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
+        int pad = (int) (getResources().getDisplayMetrics().density * 20);
+        container.setPadding(pad, pad / 2, pad, 0);
+
+        for (PreconditionChecker.Item item : unmet) {
+            TextView row = new TextView(this);
+            row.setText("✗  " + item.name + "（点击前往设置）");
+            row.setTextColor(0xFFD32F2F);
+            row.setTextSize(14);
+            row.setPadding(0, pad / 2, 0, pad / 2);
+            if (item.fixIntent != null) {
+                row.setOnClickListener(v -> {
+                    try {
+                        startActivity(item.fixIntent);
+                    } catch (Exception e) {
+                        GoUtils.DisplayToast(this, getResources().getString(R.string.app_error_open_settings));
+                    }
+                });
+            }
+            container.addView(row);
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle(getResources().getString(R.string.precheck_title))
+                .setView(container)
+                .setNeutralButton(R.string.precheck_recheck, (d, w) ->
+                        doGoLocation(findViewById(R.id.faBtnStart)))
+                .setNegativeButton(R.string.precheck_close, null)
+                .show();
     }
 
     /*============================== 历史记录 相关 ==============================*/
