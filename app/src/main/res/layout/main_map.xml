@@ -59,6 +59,15 @@
                 android:minHeight="48dp"
                 android:text="@string/map_pic_sate"
                 android:textColor="#00796B" />
+
+            <RadioButton
+                android:id="@+id/mapNight"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:minHeight="48dp"
+                android:text="@string/map_pic_night"
+                android:textColor="#00796B" />
         </RadioGroup>
 
         <ImageButton

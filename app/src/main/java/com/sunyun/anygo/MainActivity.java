@@ -624,6 +624,10 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
             if (checkedId == R.id.mapSatellite) {
                 mAMap.setMapType(AMap.MAP_TYPE_SATELLITE);
             }
+
+            if (checkedId == R.id.mapNight) {
+                mAMap.setMapType(AMap.MAP_TYPE_NIGHT);
+            }
         });
 
         ImageButton curPosBtn = this.findViewById(R.id.cur_position);
