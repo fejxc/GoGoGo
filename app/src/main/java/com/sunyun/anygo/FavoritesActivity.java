@@ -1,7 +1,11 @@
 package com.sunyun.anygo;
 
+import android.content.ContentValues;
+import android.content.Intent;
 import android.database.Cursor;
+import android.net.Uri;
 import android.database.sqlite.SQLiteDatabase;
+import android.view.Menu;
 import android.os.Bundle;
 import android.view.MenuItem;
 import android.view.MenuItem;
@@ -17,7 +21,11 @@ import androidx.appcompat.app.AlertDialog;
 import com.elvishew.xlog.XLog;
 import com.sunyun.anygo.database.DataBaseFavorite;
 import com.sunyun.anygo.utils.GoUtils;
+import com.sunyun.anygo.utils.MapUtils;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
@@ -38,6 +46,8 @@ public class FavoritesActivity extends BaseActivity {
     /* 原始坐标（不参与展示，点击时取用） */
     private static final String KEY_LNG_RAW = "fav_lng_raw";
     private static final String KEY_LAT_RAW = "fav_lat_raw";
+
+    private static final int REQ_IMPORT_FAV = 2001;
 
     private SQLiteDatabase mFavDB;
     private ListView mListView;
@@ -83,12 +93,114 @@ public class FavoritesActivity extends BaseActivity {
     }
 
     @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.menu_favorites, menu);
+        return true;
+    }
+
+    @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         if (item.getItemId() == android.R.id.home) {
             finish();
             return true;
+        } else if (item.getItemId() == R.id.action_export) {
+            exportFavorites();
+            return true;
+        } else if (item.getItemId() == R.id.action_import) {
+            pickFavoritesFile();
+            return true;
         }
         return super.onOptionsItemSelected(item);
+    }
+
+    /* ============================== 备份：导出 / 导入 ============================== */
+
+    private void exportFavorites() {
+        if (mRecords.isEmpty()) {
+            GoUtils.DisplayToast(this, getResources().getString(R.string.fav_none));
+            return;
+        }
+
+        try {
+            org.json.JSONArray arr = new org.json.JSONArray();
+            for (Map<String, Object> rec : mRecords) {
+                org.json.JSONObject obj = new org.json.JSONObject();
+                obj.put("name", String.valueOf(rec.get(KEY_NAME)));
+                obj.put("address", String.valueOf(rec.get(KEY_ADDRESS)));
+                obj.put("lng", rec.get(KEY_LNG_RAW));
+                obj.put("lat", rec.get(KEY_LAT_RAW));
+                arr.put(obj);
+            }
+
+            File dir = getExternalFilesDir("Export");
+            if (dir == null) {
+                GoUtils.DisplayToast(this, getResources().getString(R.string.fav_export_fail));
+                return;
+            }
+            File file = new File(dir, "AnyGo收藏-" + System.currentTimeMillis() + ".json");
+            try (FileOutputStream fos = new FileOutputStream(file)) {
+                fos.write(arr.toString(2).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+
+            com.sunyun.anygo.utils.ShareUtils.shareFile(this, file, "AnyGo收藏备份");
+        } catch (Exception e) {
+            XLog.e("FAVORITES: export error " + e.getMessage());
+            GoUtils.DisplayToast(this, getResources().getString(R.string.fav_export_fail));
+        }
+    }
+
+    private void pickFavoritesFile() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        try {
+            startActivityForResult(intent, REQ_IMPORT_FAV);
+        } catch (Exception e) {
+            GoUtils.DisplayToast(this, getResources().getString(R.string.fav_import_fail));
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_IMPORT_FAV && resultCode == RESULT_OK && data != null && data.getData() != null) {
+            importFavorites(data.getData());
+        }
+    }
+
+    private void importFavorites(Uri uri) {
+        try (InputStream in = getContentResolver().openInputStream(uri)) {
+            StringBuilder sb = new StringBuilder();
+            byte[] buf = new byte[4096];
+            int n;
+            try (java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream()) {
+                while ((n = in.read(buf)) > 0) {
+                    bos.write(buf, 0, n);
+                }
+                sb.append(new String(bos.toByteArray(), java.nio.charset.StandardCharsets.UTF_8));
+            }
+
+            org.json.JSONArray arr = new org.json.JSONArray(sb.toString());
+            int imported = 0;
+            for (int i = 0; i < arr.length(); i++) {
+                org.json.JSONObject obj = arr.getJSONObject(i);
+                ContentValues cv = new ContentValues();
+                cv.put(DataBaseFavorite.DB_COLUMN_NAME, obj.getString("name"));
+                cv.put(DataBaseFavorite.DB_COLUMN_ADDRESS, obj.optString("address", ""));
+                cv.put(DataBaseFavorite.DB_COLUMN_LONGITUDE, obj.getString("lng"));
+                cv.put(DataBaseFavorite.DB_COLUMN_LATITUDE, obj.getString("lat"));
+                cv.put(DataBaseFavorite.DB_COLUMN_TIMESTAMP, System.currentTimeMillis() / 1000);
+                DataBaseFavorite.saveFavorite(mFavDB, cv);
+                imported++;
+            }
+
+            fetchAll();
+            showList();
+            GoUtils.DisplayToast(this, getResources().getString(R.string.fav_imported, imported));
+        } catch (Exception e) {
+            XLog.e("FAVORITES: import error " + e.getMessage());
+            GoUtils.DisplayToast(this, getResources().getString(R.string.fav_import_fail));
+        }
     }
 
     private void initDataBase() {

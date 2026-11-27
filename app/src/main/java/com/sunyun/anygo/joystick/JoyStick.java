@@ -695,13 +695,14 @@ public class JoyStick extends View {
 
             mListener.onPositionInfo(Double.parseDouble(wgs84Longitude), Double.parseDouble(wgs84Latitude), mAltitude);
 
-            // 注意这里在选择位置之后需要刷新地图（CUSTOM 列：GCJ-02 坐标）
-            String gcjLatLng = (String) ((TextView) view.findViewById(R.id.BDLatLngText)).getText();
-            gcjLatLng = gcjLatLng.substring(gcjLatLng.indexOf('[') + 1, gcjLatLng.indexOf(']'));
-            String[] gcjLatLngStr = gcjLatLng.split(" ");
-            String gcjLongitude = gcjLatLngStr[0].substring(gcjLatLngStr[0].indexOf(':') + 1);
-            String gcjLatitude = gcjLatLngStr[1].substring(gcjLatLngStr[1].indexOf(':') + 1);
-            mCurMapLngLat = new LatLng(Double.parseDouble(gcjLatitude), Double.parseDouble(gcjLongitude));
+            // 注意这里在选择位置之后需要刷新地图（WGS-84 列转 GCJ-02，新旧数据均正确）
+            String wgsLatLng = (String) ((TextView) view.findViewById(R.id.WGSLatLngText)).getText();
+            wgsLatLng = wgsLatLng.substring(wgsLatLng.indexOf('[') + 1, wgsLatLng.indexOf(']'));
+            String[] wgsLatLngStr = wgsLatLng.split(" ");
+            String wgsLongitude = wgsLatLngStr[0].substring(wgsLatLngStr[0].indexOf(':') + 1);
+            String wgsLatitude = wgsLatLngStr[1].substring(wgsLatLngStr[1].indexOf(':') + 1);
+            double[] gcjFromWgs = MapUtils.wgs2gcj02(Double.parseDouble(wgsLongitude), Double.parseDouble(wgsLatitude));
+            mCurMapLngLat = new LatLng(gcjFromWgs[1], gcjFromWgs[0]);
 
             GoUtils.DisplayToast(mContext, getResources().getString(R.string.app_location_ok));
         });
@@ -744,13 +745,13 @@ public class JoyStick extends View {
                 String Longitude = cursor.getString(2);
                 String Latitude = cursor.getString(3);
                 long TimeStamp = cursor.getInt(4);
-                String GcjLongitude = cursor.getString(5);
-                String GcjLatitude = cursor.getString(6);
-                Log.d("TB", ID + "\t" + Location + "\t" + Longitude + "\t" + Latitude + "\t" + TimeStamp + "\t" + GcjLongitude + "\t" + GcjLatitude);
+                // WGS-84 列（第 2/3 列）新旧数据均正确；地图显示坐标由其转 GCJ-02 得出
+                double[] gcjFetched = MapUtils.wgs2gcj02(Double.parseDouble(Longitude), Double.parseDouble(Latitude));
+                Log.d("TB", ID + "\t" + Location + "\t" + Longitude + "\t" + Latitude + "\t" + TimeStamp);
                 BigDecimal bigDecimalLongitude = BigDecimal.valueOf(Double.parseDouble(Longitude));
                 BigDecimal bigDecimalLatitude = BigDecimal.valueOf(Double.parseDouble(Latitude));
-                BigDecimal bigDecimalGcjLongitude = BigDecimal.valueOf(Double.parseDouble(GcjLongitude));
-                BigDecimal bigDecimalGcjLatitude = BigDecimal.valueOf(Double.parseDouble(GcjLatitude));
+                BigDecimal bigDecimalGcjLongitude = BigDecimal.valueOf(gcjFetched[0]);
+                BigDecimal bigDecimalGcjLatitude = BigDecimal.valueOf(gcjFetched[1]);
                 double doubleLongitude = bigDecimalLongitude.setScale(11, RoundingMode.HALF_UP).doubleValue();
                 double doubleLatitude = bigDecimalLatitude.setScale(11, RoundingMode.HALF_UP).doubleValue();
                 double doubleGcjLongitude = bigDecimalGcjLongitude.setScale(11, RoundingMode.HALF_UP).doubleValue();

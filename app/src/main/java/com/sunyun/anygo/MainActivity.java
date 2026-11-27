@@ -428,22 +428,23 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
             int id = item.getItemId();
 
             if (id == R.id.nav_last_position) {
-                // 一键回到上次位置：最近一条历史记录（CUSTOM 列，GCJ-02）
+                // 一键回到上次位置：最近一条历史记录，读 WGS-84 列（新旧数据均正确）转 GCJ-02 显示
                 String lastLoc = null, lastLng = null, lastLat = null;
                 try (Cursor c = mLocationHistoryDB.query(DataBaseHistoryLocation.TABLE_NAME, null,
                         null, null, null, null,
                         DataBaseHistoryLocation.DB_COLUMN_TIMESTAMP + " DESC", "1")) {
                     if (c.moveToFirst()) {
                         lastLoc = c.getString(1);
-                        lastLng = c.getString(5);
-                        lastLat = c.getString(6);
+                        lastLng = c.getString(2);
+                        lastLat = c.getString(3);
                     }
                 } catch (Exception e) {
                     XLog.e("ERROR: query last location");
                 }
 
                 if (lastLng != null && lastLat != null) {
-                    MainActivity.showLocation(lastLoc, lastLng, lastLat);
+                    double[] gcj = MapUtils.wgs2gcj02(Double.parseDouble(lastLng), Double.parseDouble(lastLat));
+                    MainActivity.showLocation(lastLoc, String.valueOf(gcj[0]), String.valueOf(gcj[1]));
                 } else {
                     GoUtils.DisplayToast(this, getResources().getString(R.string.history_none));
                 }
@@ -1076,8 +1077,9 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                 searchHistoryItem.put(DataBaseHistorySearch.DB_COLUMN_DESCRIPTION, cursor.getString(2));
                 searchHistoryItem.put(DataBaseHistorySearch.DB_COLUMN_TIMESTAMP, "" + cursor.getInt(3));
                 searchHistoryItem.put(DataBaseHistorySearch.DB_COLUMN_IS_LOCATION, "" + cursor.getInt(4));
-                searchHistoryItem.put(DataBaseHistorySearch.DB_COLUMN_LONGITUDE_CUSTOM, cursor.getString(7));
-                searchHistoryItem.put(DataBaseHistorySearch.DB_COLUMN_LATITUDE_CUSTOM, cursor.getString(8));
+                // 隐藏的经纬度键改存 WGS-84（第 2/3 列）：无论旧行（CUSTOM 错存 WGS84）还是新行（CUSTOM=GCJ02）都正确
+                searchHistoryItem.put(DataBaseHistorySearch.DB_COLUMN_LONGITUDE_CUSTOM, cursor.getString(2));
+                searchHistoryItem.put(DataBaseHistorySearch.DB_COLUMN_LATITUDE_CUSTOM, cursor.getString(3));
                 data.add(searchHistoryItem);
             }
             cursor.close();
@@ -1192,8 +1194,9 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
             if (searchIsLoc.equals("1")) {
                 String lng = ((TextView) view.findViewById(R.id.search_longitude)).getText().toString();
                 String lat = ((TextView) view.findViewById(R.id.search_latitude)).getText().toString();
-                // mMarkName = ((TextView) view.findViewById(R.id.poi_name)).getText().toString();
-                mMarkLatLngMap = new LatLng(Double.parseDouble(lat), Double.parseDouble(lng));
+                // 隐藏键现为 WGS-84：转 GCJ-02 后标点显示
+                double[] gcj = MapUtils.wgs2gcj02(Double.parseDouble(lng), Double.parseDouble(lat));
+                mMarkLatLngMap = new LatLng(gcj[1], gcj[0]);
                 CameraUpdate cameraUpdate = CameraUpdateFactory.changeLatLng(mMarkLatLngMap);
                 mAMap.moveCamera(cameraUpdate);
 
