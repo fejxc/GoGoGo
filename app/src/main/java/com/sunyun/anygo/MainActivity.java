@@ -120,7 +120,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     private SharedPreferences sharedPreferences;
 
     /* 更新检测总开关：待本仓库发布稳定版本后置为 true 接入（checkUpdateVersion 指向本仓库 Releases） */
-    private static final boolean UPDATE_CHECK_ENABLED = false;
+    private static final boolean UPDATE_CHECK_ENABLED = true;   // 本仓库已有稳定 Release（v1.0.0+），接入应用内更新
 
     /*============================== 主界面地图 相关 ==============================*/
     /************** 地图 *****************/
