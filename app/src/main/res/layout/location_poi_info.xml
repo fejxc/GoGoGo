@@ -63,6 +63,15 @@
             android:src="@drawable/ic_save"
             app:tint="@color/colorAccent"/>
         <ImageButton
+            android:id="@+id/poi_fav"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:theme="@style/RippleWhite"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_fav"
+            app:tint="@color/colorAccent"/>
+        <ImageButton
             android:id="@+id/poi_copy"
             android:layout_width="0dp"
             android:layout_height="wrap_content"

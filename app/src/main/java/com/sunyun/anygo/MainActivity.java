@@ -87,6 +87,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.sunyun.anygo.service.ServiceGo;
+import com.sunyun.anygo.database.DataBaseFavorite;
 import com.sunyun.anygo.database.DataBaseHistoryLocation;
 import com.sunyun.anygo.database.DataBaseHistorySearch;
 import com.sunyun.anygo.utils.PreconditionChecker;
@@ -154,6 +155,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     /*============================== 历史记录 相关 ==============================*/
     private SQLiteDatabase mLocationHistoryDB;
     private SQLiteDatabase mSearchHistoryDB;
+    private SQLiteDatabase mFavoritesDB;
     /*============================== SearchView 相关 ==============================*/
     private SearchView searchView;
     private ListView mSearchList;
@@ -286,6 +288,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         //close db
         mLocationHistoryDB.close();
         mSearchHistoryDB.close();
+        mFavoritesDB.close();
 
         super.onDestroy();
     }
@@ -423,7 +426,29 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         mNavigationView.setNavigationItemSelectedListener(item -> {
             int id = item.getItemId();
 
-            if (id == R.id.nav_history) {
+            if (id == R.id.nav_last_position) {
+                // 一键回到上次位置：最近一条历史记录（CUSTOM 列，GCJ-02）
+                String lastLoc = null, lastLng = null, lastLat = null;
+                try (Cursor c = mLocationHistoryDB.query(DataBaseHistoryLocation.TABLE_NAME, null,
+                        null, null, null, null,
+                        DataBaseHistoryLocation.DB_COLUMN_TIMESTAMP + " DESC", "1")) {
+                    if (c.moveToFirst()) {
+                        lastLoc = c.getString(1);
+                        lastLng = c.getString(5);
+                        lastLat = c.getString(6);
+                    }
+                } catch (Exception e) {
+                    XLog.e("ERROR: query last location");
+                }
+
+                if (lastLng != null && lastLat != null) {
+                    MainActivity.showLocation(lastLoc, lastLng, lastLat);
+                } else {
+                    GoUtils.DisplayToast(this, getResources().getString(R.string.history_none));
+                }
+            } else if (id == R.id.nav_favorites) {
+                startActivity(new Intent(MainActivity.this, FavoritesActivity.class));
+            } else if (id == R.id.nav_history) {
                 Intent intent = new Intent(MainActivity.this, HistoryActivity.class);
 
                 startActivity(intent);
@@ -557,6 +582,42 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         });
         ImageButton ibShare = mPoiPanel.findViewById(R.id.poi_share);
         ibShare.setOnClickListener(v -> ShareUtils.shareText(MainActivity.this, "分享位置", poiLongitude.getText()+","+poiLatitude.getText()));
+        ImageButton ibFav = mPoiPanel.findViewById(R.id.poi_fav);
+        ibFav.setOnClickListener(v -> {
+            if (mMarkLatLngMap == null) {
+                return;
+            }
+
+            // 收藏位置：名称默认取逆地理结果，可编辑
+            EditText input = new EditText(this);
+            input.setHint(getResources().getString(R.string.fav_add_hint));
+            if (mMarkName != null) {
+                input.setText(mMarkName);
+            }
+
+            new AlertDialog.Builder(this)
+                    .setTitle(getResources().getString(R.string.fav_add_title))
+                    .setView(input)
+                    .setPositiveButton(getResources().getString(R.string.fav_added), (d, w) -> {
+                        String name = input.getText().toString().trim();
+                        if (name.isEmpty()) {
+                            name = String.format("%.5f, %.5f", mMarkLatLngMap.longitude, mMarkLatLngMap.latitude);
+                        }
+
+                        ContentValues contentValues = new ContentValues();
+                        contentValues.put(DataBaseFavorite.DB_COLUMN_NAME, name);
+                        contentValues.put(DataBaseFavorite.DB_COLUMN_ADDRESS, mMarkName == null ? "" : mMarkName);
+                        contentValues.put(DataBaseFavorite.DB_COLUMN_LONGITUDE, String.valueOf(mMarkLatLngMap.longitude));
+                        contentValues.put(DataBaseFavorite.DB_COLUMN_LATITUDE, String.valueOf(mMarkLatLngMap.latitude));
+                        contentValues.put(DataBaseFavorite.DB_COLUMN_TIMESTAMP, System.currentTimeMillis() / 1000);
+                        DataBaseFavorite.saveFavorite(mFavoritesDB, contentValues);
+
+                        GoUtils.DisplayToast(this, getResources().getString(R.string.fav_added));
+                    })
+                    .setNegativeButton(getResources().getString(R.string.precheck_close), null)
+                    .show();
+        });
+
         ImageButton ibFly = mPoiPanel.findViewById(R.id.poi_fly);
         ibFly.setOnClickListener(this::doGoLocation);
 
@@ -928,6 +989,9 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
             // 搜索历史
             DataBaseHistorySearch dbHistory = new DataBaseHistorySearch(getApplicationContext());
             mSearchHistoryDB = dbHistory.getWritableDatabase();
+            // 位置收藏
+            DataBaseFavorite dbFavorite = new DataBaseFavorite(getApplicationContext());
+            mFavoritesDB = dbFavorite.getWritableDatabase();
         } catch (Exception e) {
             XLog.e("ERROR: sqlite init error");
         }

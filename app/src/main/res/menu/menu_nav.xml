@@ -5,6 +5,17 @@
 
     <group>
         <item
+            android:id="@+id/nav_last_position"
+            android:icon="@drawable/ic_home_position"
+            android:title="@string/nav_menu_last_position" />
+        <item
+            android:id="@+id/nav_favorites"
+            android:icon="@drawable/ic_fav"
+            android:title="@string/nav_menu_favorites" />
+    </group>
+
+    <group>
+        <item
             android:id="@+id/nav_history"
             android:icon="@drawable/ic_menu_history"
             android:title="@string/nav_menu_history" />

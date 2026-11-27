@@ -104,6 +104,8 @@
     <!-- 导航页 -->
     <string name="nav_drawer_open">打开导航菜单</string>
     <string name="nav_drawer_close">关闭导航菜单</string>
+    <string name="nav_menu_last_position">回到上次位置</string>
+    <string name="nav_menu_favorites">位置收藏</string>
     <string name="nav_menu_history">历史记录</string>
     <string name="nav_menu_settings">设置</string>
     <string name="nav_menu_dev">开发人员选项</string>
@@ -129,6 +131,12 @@
     <string name="precheck_recheck">重新检测</string>
     <string name="precheck_close">关闭</string>
     <string name="app_error_open_settings">无法打开对应设置页</string>
+    <string name="fav_add_title">收藏位置</string>
+    <string name="fav_add_hint">收藏名称</string>
+    <string name="fav_added">已收藏</string>
+    <string name="fav_deleted">已删除收藏</string>
+    <string name="fav_none">暂无收藏位置</string>
+    <string name="history_none">暂无历史位置</string>
     <string name="zoom_in">放大</string>
     <string name="zoom_out">缩小</string>
 
