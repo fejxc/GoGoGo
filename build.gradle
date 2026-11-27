@@ -16,7 +16,12 @@ buildscript {
 allprojects {
     repositories {
         google()
+        // 本地离线镜像（目录不存在时自动跳过；.gitignore 已忽略）
+        maven { url = uri("$rootDir/local-maven") }
+        // Maven Central 国内镜像（本机直连被限流时兜底）
+        maven { url 'https://maven.aliyun.com/repository/public' }
         mavenCentral()
+        maven { url 'https://repo1.maven.org/maven2' }
     }
 
     gradle.projectsEvaluated {

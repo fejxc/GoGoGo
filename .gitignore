@@ -54,3 +54,6 @@ google-services.json
 # 签名文件不入库
 *.jks
 keystore/
+
+# 本地 Maven 离线镜像
+local-maven/
