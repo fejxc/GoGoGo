@@ -1090,9 +1090,9 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                 searchHistoryItem.put(DataBaseHistorySearch.DB_COLUMN_DESCRIPTION, cursor.getString(2));
                 searchHistoryItem.put(DataBaseHistorySearch.DB_COLUMN_TIMESTAMP, "" + cursor.getInt(3));
                 searchHistoryItem.put(DataBaseHistorySearch.DB_COLUMN_IS_LOCATION, "" + cursor.getInt(4));
-                // 隐藏的经纬度键改存 WGS-84（第 2/3 列）：无论旧行（CUSTOM 错存 WGS84）还是新行（CUSTOM=GCJ02）都正确
-                searchHistoryItem.put(DataBaseHistorySearch.DB_COLUMN_LONGITUDE_CUSTOM, cursor.getString(2));
-                searchHistoryItem.put(DataBaseHistorySearch.DB_COLUMN_LATITUDE_CUSTOM, cursor.getString(3));
+                // 隐藏的经纬度键存 WGS-84（HistorySearch 表第 5/6 列；注意其 2/3 列是描述/时间戳，勿混淆）
+                searchHistoryItem.put(DataBaseHistorySearch.DB_COLUMN_LONGITUDE_CUSTOM, cursor.getString(5));
+                searchHistoryItem.put(DataBaseHistorySearch.DB_COLUMN_LATITUDE_CUSTOM, cursor.getString(6));
                 data.add(searchHistoryItem);
             }
             cursor.close();
