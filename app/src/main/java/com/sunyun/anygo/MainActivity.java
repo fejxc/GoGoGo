@@ -61,6 +61,7 @@ import com.amap.api.maps.model.BitmapDescriptor;
 import com.amap.api.maps.model.BitmapDescriptorFactory;
 import com.amap.api.maps.model.CameraPosition;
 import com.amap.api.maps.model.LatLng;
+import com.amap.api.maps.model.Marker;
 import com.amap.api.maps.model.MarkerOptions;
 import com.amap.api.maps.model.MyLocationStyle;
 import com.amap.api.services.core.LatLonPoint;
@@ -129,6 +130,9 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     private GeocodeSearch mGeocodeSearch;
     private View mPoiPanel;
     private LocationSource.OnLocationChangedListener mLocationChangedListener;
+    private TextView mStatusChip;
+    private static Marker mUserMarker;     // 用户选点标记（图钉）
+    private static Marker mMockMarker;     // 模拟位置标记（蓝点，运行期间常驻）
     private SensorManager mSensorManager;
     private Sensor mSensorAccelerometer;
     private Sensor mSensorMagnetic;
@@ -216,6 +220,20 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     }
 
     @Override
+    protected void onStart() {
+        super.onStart();
+
+        // ServiceGo 与 App 同进程：静态标记可靠。Activity 被回收重建后恢复"模拟中" UI
+        if (ServiceGo.sRunning) {
+            isMockServStart = true;
+            mButtonStart.setImageResource(R.drawable.ic_fly);
+            bindService(new Intent(this, ServiceGo.class), mConnection, BIND_AUTO_CREATE);
+            ServiceGo.setStatusListener(mMockStatusListener);
+            onMockPositionUpdate(ServiceGo.sCurLng, ServiceGo.sCurLat);
+        }
+    }
+
+    @Override
     protected void onPause() {
         XLog.i("MainActivity: onPause");
         mMapView.onPause();
@@ -252,6 +270,8 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         if (UPDATE_CHECK_ENABLED) {
             unregisterReceiver(mDownloadBdRcv);
         }
+
+        ServiceGo.setStatusListener(null);
 
         mSensorManager.unregisterListener(this);
 
@@ -539,6 +559,8 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         ImageButton ibFly = mPoiPanel.findViewById(R.id.poi_fly);
         ibFly.setOnClickListener(this::doGoLocation);
 
+        mStatusChip = findViewById(R.id.status_chip);
+
         mSensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);// 获取传感器管理服务
         if (mSensorManager != null) {
             mSensorAccelerometer = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
@@ -698,14 +720,20 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     //标定选择的位置
     private void markMap() {
         if (mMarkLatLngMap != null) {
+            if (mUserMarker != null) {
+                mUserMarker.remove();
+            }
             MarkerOptions ooA = new MarkerOptions().position(mMarkLatLngMap).icon(mMapIndicator);
-            mAMap.clear();
-            mAMap.addMarker(ooA);
+            mUserMarker = mAMap.addMarker(ooA);
         }
     }
 
     private void resetMap() {
-        mAMap.clear();
+        if (mUserMarker != null) {
+            mUserMarker.remove();
+            mUserMarker = null;
+        }
+        // 模拟标记（mMockMarker）保留：模拟仍在运行
         mMarkLatLngMap = null;
 
         // 定位蓝点由 LocationSource 回调自动刷新，这里只需移动视野
@@ -727,8 +755,10 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                 mMarkName = name;
                 mMarkLatLngMap = new LatLng(Double.parseDouble(latitude), Double.parseDouble(longitude));
                 MarkerOptions ooA = new MarkerOptions().position(mMarkLatLngMap).icon(mMapIndicator);
-                mAMap.clear();
-                mAMap.addMarker(ooA);
+                if (mUserMarker != null) {
+                    mUserMarker.remove();
+                }
+                mUserMarker = mAMap.addMarker(ooA);
                 CameraUpdate cameraUpdate = CameraUpdateFactory.changeLatLng(mMarkLatLngMap);
                 mAMap.moveCamera(cameraUpdate);
             }
@@ -745,6 +775,30 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         mButtonStart.setOnClickListener(this::doGoLocation);
     }
 
+    /** 模拟位置回调（ServiceGo 子线程）：切主线程更新状态条与模拟标记，坐标 WGS84 -> GCJ02 显示 */
+    private final ServiceGo.OnMockStatusListener mMockStatusListener = (lng, lat, alt) -> runOnUiThread(() ->
+            onMockPositionUpdate(lng, lat));
+
+    private void onMockPositionUpdate(double lng, double lat) {
+        if (!ServiceGo.sRunning) {
+            return;
+        }
+
+        double[] gcj = MapUtils.gcj2wgs(lng, lat);
+        LatLng pos = new LatLng(gcj[1], gcj[0]);
+        if (mMockMarker == null) {
+            mMockMarker = mAMap.addMarker(new MarkerOptions().position(pos)
+                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE))
+                    .title(getResources().getString(R.string.mock_marker_title)));
+        } else {
+            mMockMarker.setPosition(pos);
+        }
+
+        mStatusChip.setText(getResources().getString(R.string.status_mocking,
+                String.format("%.5f, %.5f", lng, lat)));
+        mStatusChip.setVisibility(View.VISIBLE);
+    }
+
     private void startGoLocation() {
         Intent serviceGoIntent = new Intent(MainActivity.this, ServiceGo.class);
         bindService(serviceGoIntent, mConnection, BIND_AUTO_CREATE);    // 绑定服务和活动，之后活动就可以去调服务的方法了
@@ -757,6 +811,9 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         startForegroundService(serviceGoIntent);
         XLog.d("startForegroundService: ServiceGo");
 
+        ServiceGo.setStatusListener(mMockStatusListener);
+        mStatusChip.setVisibility(View.VISIBLE);
+
         isMockServStart = true;
     }
 
@@ -765,6 +822,13 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         Intent serviceGoIntent = new Intent(MainActivity.this, ServiceGo.class);
         stopService(serviceGoIntent);
         isMockServStart = false;
+        ServiceGo.setStatusListener(null);
+
+        if (mMockMarker != null) {
+            mMockMarker.remove();
+            mMockMarker = null;
+        }
+        mStatusChip.setVisibility(View.GONE);
     }
 
     private void doGoLocation(View v) {
@@ -801,6 +865,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
 
                 mAMap.clear();
                 mMarkLatLngMap = null;
+                onMockPositionUpdate(ServiceGo.sCurLng, ServiceGo.sCurLat);
 
                 if (GoUtils.isWifiEnabled(MainActivity.this)) {
                     GoUtils.showDisableWifiDialog(MainActivity.this);
@@ -823,6 +888,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                     recordCurrentLocation(mMarkLatLngMap.longitude, mMarkLatLngMap.latitude);
                     mAMap.clear();
                     mMarkLatLngMap = null;
+                    onMockPositionUpdate(ServiceGo.sCurLng, ServiceGo.sCurLat);
 
                     if (GoUtils.isWifiEnabled(MainActivity.this)) {
                         GoUtils.showDisableWifiDialog(MainActivity.this);

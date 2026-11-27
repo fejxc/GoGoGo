@@ -37,6 +37,27 @@ public class ServiceGo extends Service {
     public static final double DEFAULT_LAT = 36.667662;
     public static final double DEFAULT_LNG = 117.027707;
     public static final double DEFAULT_ALT = 55.0D;
+
+    /* 进程内静态状态：Activity 被回收重建后据此恢复"模拟中"UI（ServiceGo 与 App 同进程，静态标记可靠） */
+    public static volatile boolean sRunning = false;
+    public static double sCurLng = DEFAULT_LNG;
+    public static double sCurLat = DEFAULT_LAT;
+    public static double sCurAlt = DEFAULT_ALT;
+    private static OnMockStatusListener sStatusListener;
+    private static int sTick = 0;
+
+    /** 模拟位置状态回调（约 1s 一次，子线程回调，消费方自行切主线程） */
+    public interface OnMockStatusListener {
+        void onMockPosition(double lng, double lat, double alt);
+    }
+
+    public static void setStatusListener(OnMockStatusListener l) {
+        sStatusListener = l;
+    }
+
+    public static boolean isRunning() {
+        return sRunning;
+    }
     public static final float DEFAULT_BEA = 0.0F;
     private double mCurLat = DEFAULT_LAT;
     private double mCurLng = DEFAULT_LNG;
@@ -78,6 +99,15 @@ public class ServiceGo extends Service {
         removeTestProviderGPS();
         addTestProviderGPS();
 
+        // 融合定位 Provider（国产 ROM 与微信/Keep 等常用），部分机型不存在该 Provider，失败忽略
+        removeTestProviderFused();
+        addTestProviderFused();
+
+        sRunning = true;
+        sCurLng = mCurLng;
+        sCurLat = mCurLat;
+        sCurAlt = mCurAlt;
+
         initGoLocation();
 
         initNotification();
@@ -90,6 +120,9 @@ public class ServiceGo extends Service {
         mCurLng = intent.getDoubleExtra(MainActivity.LNG_MSG_ID, DEFAULT_LNG);
         mCurLat = intent.getDoubleExtra(MainActivity.LAT_MSG_ID, DEFAULT_LAT);
         mCurAlt = intent.getDoubleExtra(MainActivity.ALT_MSG_ID, DEFAULT_ALT);
+        sCurLng = mCurLng;
+        sCurLat = mCurLat;
+        sCurAlt = mCurAlt;
 
         mJoyStick.setCurrentPosition(mCurLng, mCurLat, mCurAlt);
 
@@ -106,6 +139,10 @@ public class ServiceGo extends Service {
 
         removeTestProviderNetwork();
         removeTestProviderGPS();
+        removeTestProviderFused();
+
+        sRunning = false;
+        sStatusListener = null;
 
         unregisterReceiver(mActReceiver);
         stopForeground(STOP_FOREGROUND_REMOVE);
@@ -189,6 +226,19 @@ public class ServiceGo extends Service {
                     if (!isStop) {
                         setLocationNetwork();
                         setLocationGPS();
+                        setLocationFused();
+
+                        // 约 1s 节流：同步静态位置并通知监听方（主界面状态条/模拟点标记）
+                        sTick++;
+                        if (sTick % 10 == 0) {
+                            sCurLng = mCurLng;
+                            sCurLat = mCurLat;
+                            sCurAlt = mCurAlt;
+                            OnMockStatusListener l = sStatusListener;
+                            if (l != null) {
+                                l.onMockPosition(mCurLng, mCurLat, mCurAlt);
+                            }
+                        }
 
                         sendEmptyMessage(HANDLER_MSG_ID);
                     }
@@ -285,6 +335,55 @@ public class ServiceGo extends Service {
             }
         } catch (SecurityException e) {
             XLog.e("SERVICEGO: ERROR - addTestProviderNetwork");
+        }
+    }
+
+    private void removeTestProviderFused() {
+        try {
+            if (mLocManager.isProviderEnabled(LocationManager.FUSED_PROVIDER)) {
+                mLocManager.setTestProviderEnabled(LocationManager.FUSED_PROVIDER, false);
+                mLocManager.removeTestProvider(LocationManager.FUSED_PROVIDER);
+            }
+        } catch (Exception e) {
+            // 部分机型无 fused Provider，忽略
+            XLog.e("SERVICEGO: ERROR - removeTestProviderFused");
+        }
+    }
+
+    @SuppressLint("wrongconstant")
+    private void addTestProviderFused() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                mLocManager.addTestProvider(LocationManager.FUSED_PROVIDER, true, true,
+                        true, true, true, true,
+                        true, ProviderProperties.POWER_USAGE_LOW, ProviderProperties.ACCURACY_FINE);
+            } else {
+                mLocManager.addTestProvider(LocationManager.FUSED_PROVIDER, true, true,
+                        true, true, true, true,
+                        true, Criteria.POWER_LOW, Criteria.ACCURACY_FINE);
+            }
+            mLocManager.setTestProviderEnabled(LocationManager.FUSED_PROVIDER, true);
+        } catch (Exception e) {
+            // 部分机型无 fused Provider，忽略
+            XLog.e("SERVICEGO: ERROR - addTestProviderFused");
+        }
+    }
+
+    private void setLocationFused() {
+        try {
+            Location loc = new Location(LocationManager.FUSED_PROVIDER);
+            loc.setAccuracy(Criteria.ACCURACY_FINE);
+            loc.setAltitude(mCurAlt);
+            loc.setBearing(mCurBea);
+            loc.setLatitude(mCurLat);
+            loc.setLongitude(mCurLng);
+            loc.setTime(System.currentTimeMillis());
+            loc.setSpeed((float) mSpeed);
+            loc.setElapsedRealtimeNanos(SystemClock.elapsedRealtimeNanos());
+
+            mLocManager.setTestProviderLocation(LocationManager.FUSED_PROVIDER, loc);
+        } catch (Exception e) {
+            XLog.e("SERVICEGO: ERROR - setLocationFused");
         }
     }
 
