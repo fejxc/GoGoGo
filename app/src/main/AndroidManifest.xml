@@ -108,6 +108,11 @@
             android:label="@string/nav_menu_favorites"
             android:exported="false" />
 
+        <activity
+            android:name=".RouteEditorActivity"
+            android:label="@string/nav_menu_route"
+            android:exported="false" />
+
     </application>
 
 </manifest>

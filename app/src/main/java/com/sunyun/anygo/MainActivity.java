@@ -449,6 +449,8 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                 }
             } else if (id == R.id.nav_favorites) {
                 startActivity(new Intent(MainActivity.this, FavoritesActivity.class));
+            } else if (id == R.id.nav_route) {
+                startActivity(new Intent(MainActivity.this, RouteEditorActivity.class));
             } else if (id == R.id.nav_history) {
                 Intent intent = new Intent(MainActivity.this, HistoryActivity.class);
 

@@ -12,6 +12,10 @@
             android:id="@+id/nav_favorites"
             android:icon="@drawable/ic_fav"
             android:title="@string/nav_menu_favorites" />
+        <item
+            android:id="@+id/nav_route"
+            android:icon="@drawable/ic_route"
+            android:title="@string/nav_menu_route" />
     </group>
 
     <group>

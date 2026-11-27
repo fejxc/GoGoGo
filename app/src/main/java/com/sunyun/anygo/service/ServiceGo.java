@@ -28,6 +28,8 @@ import androidx.annotation.NonNull;
 import androidx.core.app.NotificationCompat;
 
 import com.elvishew.xlog.XLog;
+
+import java.util.ArrayList;
 import com.sunyun.anygo.MainActivity;
 import com.sunyun.anygo.R;
 import com.sunyun.anygo.joystick.JoyStick;
@@ -82,6 +84,18 @@ public class ServiceGo extends Service {
     private Handler mLocHandler;
     private boolean isStop = false;
     // 通知栏消息
+    /* 路线模拟 */
+    public static final String EXTRA_ROUTE = "route_mode";
+    public static final String EXTRA_ROUTE_POINTS = "route_points";   // double[] {lng,lat,...} WGS-84
+    public static final String EXTRA_ROUTE_SPEED = "route_speed";     // m/s
+
+    private boolean mRouteMode = false;
+    private ArrayList<double[]> mRoutePts = new ArrayList<>();        // WGS-84 {lng, lat}
+    private int mRouteSeg = 0;          // 当前航段索引（p[i] -> p[i+1]）
+    private double mSegDone = 0;        // 当前航段已走米数
+    private double mRouteSpeed = 1.2;
+    private boolean mRouteDone = false; // 非环回模式走完后的停住状态
+
     private static final int SERVICE_GO_NOTE_ID = 1;
     private static final String SERVICE_GO_NOTE_ACTION_JOYSTICK_SHOW = "ShowJoyStick";
     private static final String SERVICE_GO_NOTE_ACTION_JOYSTICK_HIDE = "HideJoyStick";
@@ -135,6 +149,26 @@ public class ServiceGo extends Service {
             mCurAlt = intent.getDoubleExtra(MainActivity.ALT_MSG_ID, DEFAULT_ALT);
             mJumpFlag = true;
             mStepsRemaining = 0;
+
+            // 路线模式：注入航点序列，沿路线连续移动
+            if (intent.getBooleanExtra(EXTRA_ROUTE, false)) {
+                double[] pts = intent.getDoubleArrayExtra(EXTRA_ROUTE_POINTS);
+                if (pts != null && pts.length >= 4) {
+                    mRoutePts.clear();
+                    for (int i = 0; i + 1 < pts.length; i += 2) {
+                        mRoutePts.add(new double[]{pts[i], pts[i + 1]});
+                    }
+                    mRouteSpeed = intent.getDoubleExtra(EXTRA_ROUTE_SPEED, 1.2);
+                    mRouteMode = true;
+                    mRouteSeg = 0;
+                    mSegDone = 0;
+                    mRouteDone = false;
+                    // 起点 = 第一个航点
+                    mCurLng = mRoutePts.get(0)[0];
+                    mCurLat = mRoutePts.get(0)[1];
+                    mJumpFlag = true;
+                }
+            }
         }
         sCurLng = mCurLng;
         sCurLat = mCurLat;
@@ -206,6 +240,9 @@ public class ServiceGo extends Service {
         mJoyStick.setListener(new JoyStick.JoyStickClickListener() {
             @Override
             public void onMoveInfo(double speed, double disLng, double disLat, double angle) {
+                if (mRouteMode) {
+                    return;     // 路线模式下忽略摇杆
+                }
                 mSpeed = speed;
                 // 根据当前的经纬度和距离，计算下一个经纬度
                 // Latitude: 1 deg = 110.574 km // 纬度的每度的距离大约为 110.574km
@@ -242,8 +279,10 @@ public class ServiceGo extends Service {
                     Thread.sleep(100);
 
                     if (!isStop) {
-                        // 推进摇杆平滑步进（每 tick 1/10 秒位移）
-                        if (mStepsRemaining > 0) {
+                        // 推进模拟：路线模式沿航点插值，否则摇杆平滑步进（每 tick 1/10 秒位移）
+                        if (mRouteMode && !mRouteDone) {
+                            advanceRoute();
+                        } else if (mStepsRemaining > 0) {
                             mCurLng += mStepLng;
                             mCurLat += mStepLat;
                             mStepsRemaining--;
@@ -454,6 +493,47 @@ public class ServiceGo extends Service {
         }
     }
 
+    /** 路线推进：沿当前航段按速度插值前进，走完一段进入下一段；末段按环回/停住处理 */
+    private void advanceRoute() {
+        double step = mRouteSpeed * 0.1;
+        int guard = 0;
+        while (step > 1e-9 && guard++ < 1000) {
+            double[] a = mRoutePts.get(mRouteSeg);
+            double[] b = mRoutePts.get(mRouteSeg + 1);
+            double segLen = Math.max(distanceMeters(a[1], a[0], b[1], b[0]), 1e-6);
+            double remain = segLen - mSegDone;
+
+            if (step < remain) {
+                mSegDone += step;
+                double t = mSegDone / segLen;
+                mCurLng = a[0] + (b[0] - a[0]) * t;
+                mCurLat = a[1] + (b[1] - a[1]) * t;
+                mCurBea = (float) bearingDeg(a[1], a[0], b[1], b[0]);
+                step = 0;
+            } else {
+                step -= remain;
+                mRouteSeg++;
+                mSegDone = 0;
+                if (mRouteSeg >= mRoutePts.size() - 1) {
+                    // 末段走完：环回起点（跳变不产生速度尖峰）或停住
+                    mRouteSeg = 0;
+                    mJumpFlag = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    /** 起点指向终点的方位角（度，0=北，顺时针） */
+    private static double bearingDeg(double lat1, double lng1, double lat2, double lng2) {
+        double phi1 = Math.toRadians(lat1);
+        double phi2 = Math.toRadians(lat2);
+        double dLng = Math.toRadians(lng2 - lng1);
+        double y = Math.sin(dLng) * Math.cos(phi2);
+        double x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLng);
+        return (Math.toDegrees(Math.atan2(y, x)) + 360.0) % 360.0;
+    }
+
     /** 两点间球面距离（米），用于按实际位移计算速度 */
     private static double distanceMeters(double lat1, double lng1, double lat2, double lng2) {
         final double R = 6371000.0;
@@ -483,6 +563,7 @@ public class ServiceGo extends Service {
     public class ServiceGoBinder extends Binder {
         public void setPosition(double lng, double lat, double alt) {
             mLocHandler.removeMessages(HANDLER_MSG_ID);
+            mRouteMode = false;         // 手动传送优先，退出路线模式
             mCurLng = lng;
             mCurLat = lat;
             mCurAlt = alt;
