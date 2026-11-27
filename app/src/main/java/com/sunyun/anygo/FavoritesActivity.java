@@ -4,7 +4,9 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.os.Bundle;
 import android.view.MenuItem;
+import android.view.MenuItem;
 import android.view.View;
+import android.widget.AdapterView;
 import android.widget.ListView;
 import android.widget.SimpleAdapter;
 import android.widget.TextView;
@@ -60,6 +62,7 @@ public class FavoritesActivity extends BaseActivity {
         mListView = findViewById(R.id.record_list_view);
 
         initDataBase();
+        initListView();
 
         fetchAll();
         showList();
@@ -138,15 +141,41 @@ public class FavoritesActivity extends BaseActivity {
         SimpleAdapter adapter = new SimpleAdapter(
                 this,
                 mRecords,
-                R.layout.history_item,
-                new String[]{KEY_ID, KEY_NAME, KEY_TIME, KEY_COORD, KEY_ADDRESS},
-                new int[]{R.id.LocationID, R.id.LocationText, R.id.TimeText, R.id.WGSLatLngText, R.id.BDLatLngText});
+                R.layout.favorite_item,
+                new String[]{KEY_ID, KEY_NAME, KEY_ADDRESS, KEY_TIME, KEY_COORD},
+                new int[]{R.id.LocationID, R.id.LocationText, R.id.BDLatLngText, R.id.TimeText, R.id.WGSLatLngText});
         mListView.setAdapter(adapter);
     }
 
-    private void deleteFavorite(long id, int position) {
-        DataBaseFavorite.deleteFavorite(mFavDB, id);
-        mRecords.remove(position);
-        showList();
+    private void initListView() {
+        // 点击：回显到主界面地图
+        mListView.setOnItemClickListener((parent, view, position, id) -> {
+            Map<String, Object> item = mRecords.get(position);
+            String name = String.valueOf(item.get(KEY_NAME));
+            String lng = String.valueOf(item.get(KEY_LNG_RAW));
+            String lat = String.valueOf(item.get(KEY_LAT_RAW));
+            MainActivity.showLocation(name, lng, lat);
+            finish();
+        });
+
+        // 长按：删除确认
+        mListView.setOnItemLongClickListener((parent, view, position, id) -> {
+            Map<String, Object> item = mRecords.get(position);
+            long favId = Long.parseLong(String.valueOf(item.get(KEY_ID)));
+            String name = String.valueOf(item.get(KEY_NAME));
+
+            new AlertDialog.Builder(this)
+                    .setTitle(name)
+                    .setMessage(R.string.fav_delete_confirm)
+                    .setPositiveButton("确定", (d, w) -> {
+                        DataBaseFavorite.deleteFavorite(mFavDB, favId);
+                        fetchAll();
+                        showList();
+                        GoUtils.DisplayToast(this, getResources().getString(R.string.fav_deleted));
+                    })
+                    .setNegativeButton("取消", null)
+                    .show();
+            return true;
+        });
     }
 }

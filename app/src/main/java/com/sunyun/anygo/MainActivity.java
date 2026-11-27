@@ -517,11 +517,12 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         mAMap.setOnMapClickListener(point -> {
             mMarkLatLngMap = point;
             markMap();
+            requestRegeo(point.longitude, point.latitude);   // 单击也弹信息面板（含收藏入口）
         });
         mAMap.setOnMapLongClickListener(point -> {
             mMarkLatLngMap = point;
             markMap();
-            mGeocodeSearch.getFromLocationAsyn(new RegeocodeQuery(new LatLonPoint(point.latitude, point.longitude), 200, GeocodeSearch.AMAP));
+            requestRegeo(point.longitude, point.latitude);
         });
         // 注：高德地图双击默认即为放大操作，无需额外监听；POI 点点击并入普通地图点击
 
@@ -533,6 +534,11 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
             public void onRegeocodeSearched(RegeocodeResult regeocodeResult, int rCode) {
                 if (rCode != 1000 || regeocodeResult == null || regeocodeResult.getRegeocodeAddress() == null) {
                     XLog.i("逆地理位置失败! rCode=" + rCode);
+                    return;
+                }
+
+                // 请求在途期间用户可能已改选其它点：只有目标一致才刷新面板
+                if (mRegeoTarget == null || !mRegeoTarget.equals(mMarkLatLngMap)) {
                     return;
                 }
 
@@ -588,35 +594,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
             if (mMarkLatLngMap == null) {
                 return;
             }
-
-            // 收藏位置：名称默认取逆地理结果，可编辑
-            EditText input = new EditText(this);
-            input.setHint(getResources().getString(R.string.fav_add_hint));
-            if (mMarkName != null) {
-                input.setText(mMarkName);
-            }
-
-            new AlertDialog.Builder(this)
-                    .setTitle(getResources().getString(R.string.fav_add_title))
-                    .setView(input)
-                    .setPositiveButton(getResources().getString(R.string.fav_added), (d, w) -> {
-                        String name = input.getText().toString().trim();
-                        if (name.isEmpty()) {
-                            name = String.format("%.5f, %.5f", mMarkLatLngMap.longitude, mMarkLatLngMap.latitude);
-                        }
-
-                        ContentValues contentValues = new ContentValues();
-                        contentValues.put(DataBaseFavorite.DB_COLUMN_NAME, name);
-                        contentValues.put(DataBaseFavorite.DB_COLUMN_ADDRESS, mMarkName == null ? "" : mMarkName);
-                        contentValues.put(DataBaseFavorite.DB_COLUMN_LONGITUDE, String.valueOf(mMarkLatLngMap.longitude));
-                        contentValues.put(DataBaseFavorite.DB_COLUMN_LATITUDE, String.valueOf(mMarkLatLngMap.latitude));
-                        contentValues.put(DataBaseFavorite.DB_COLUMN_TIMESTAMP, System.currentTimeMillis() / 1000);
-                        DataBaseFavorite.saveFavorite(mFavoritesDB, contentValues);
-
-                        GoUtils.DisplayToast(this, getResources().getString(R.string.fav_added));
-                    })
-                    .setNegativeButton(getResources().getString(R.string.precheck_close), null)
-                    .show();
+            showFavoriteDialog(mMarkName, mMarkName, mMarkLatLngMap.longitude, mMarkLatLngMap.latitude);
         });
 
         ImageButton ibFly = mPoiPanel.findViewById(R.id.poi_fly);
@@ -766,6 +744,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                             mMarkName = "手动输入的坐标";
 
                             markMap();
+                            requestRegeo(mMarkLatLngMap.longitude, mMarkLatLngMap.latitude);
 
                             CameraUpdate cameraUpdate = CameraUpdateFactory.changeLatLng(mMarkLatLngMap);
                             mAMap.moveCamera(cameraUpdate);
@@ -799,6 +778,8 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         }
         // 模拟标记（mMockMarker）保留：模拟仍在运行
         mMarkLatLngMap = null;
+        mMarkName = null;
+        mPoiPanel.setVisibility(View.GONE);
 
         // 定位蓝点由 LocationSource 回调自动刷新，这里只需移动视野
         // 未完成首次定位时当前坐标为 (0,0)，不做移动，避免视野飞到赤道几内亚湾
@@ -856,6 +837,55 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                     .show();
             return true;
         });
+    }
+
+    private LatLng mRegeoTarget;    // 在途逆地理请求的目标点，回调到达时校验避免覆盖新选点
+
+    private void requestRegeo(double lng, double lat) {
+        mRegeoTarget = new LatLng(lat, lng);
+        mGeocodeSearch.getFromLocationAsyn(new RegeocodeQuery(new LatLonPoint(lat, lng), 200, GeocodeSearch.AMAP));
+    }
+
+    /** 清除当前选点：移除图钉并收起信息面板 */
+    private void clearSelection() {
+        if (mUserMarker != null) {
+            mUserMarker.remove();
+            mUserMarker = null;
+        }
+        mMarkLatLngMap = null;
+        mMarkName = null;
+        mPoiPanel.setVisibility(View.GONE);
+    }
+
+    /** 收藏对话框：名称可编辑，坐标一律 GCJ-02 */
+    private void showFavoriteDialog(String name, String address, double lng, double lat) {
+        EditText input = new EditText(this);
+        input.setHint(getResources().getString(R.string.fav_add_hint));
+        if (name != null && !name.isEmpty()) {
+            input.setText(name);
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle(getResources().getString(R.string.fav_add_title))
+                .setView(input)
+                .setPositiveButton(getResources().getString(R.string.fav_added), (d, w) -> {
+                    String n = input.getText().toString().trim();
+                    if (n.isEmpty()) {
+                        n = String.format("%.5f, %.5f", lng, lat);
+                    }
+
+                    ContentValues contentValues = new ContentValues();
+                    contentValues.put(DataBaseFavorite.DB_COLUMN_NAME, n);
+                    contentValues.put(DataBaseFavorite.DB_COLUMN_ADDRESS, address == null ? "" : address);
+                    contentValues.put(DataBaseFavorite.DB_COLUMN_LONGITUDE, String.valueOf(lng));
+                    contentValues.put(DataBaseFavorite.DB_COLUMN_LATITUDE, String.valueOf(lat));
+                    contentValues.put(DataBaseFavorite.DB_COLUMN_TIMESTAMP, System.currentTimeMillis() / 1000);
+                    DataBaseFavorite.saveFavorite(mFavoritesDB, contentValues);
+
+                    GoUtils.DisplayToast(this, getResources().getString(R.string.fav_added));
+                })
+                .setNegativeButton(getResources().getString(R.string.precheck_close), null)
+                .show();
     }
 
     /** 模拟位置回调（ServiceGo 子线程）：切主线程更新状态条与模拟标记，坐标 WGS84 -> GCJ02 显示 */
@@ -950,12 +980,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                         .setAction("Action", null).show();
 
                 recordCurrentLocation(mMarkLatLngMap.longitude, mMarkLatLngMap.latitude);
-
-                if (mUserMarker != null) {
-                    mUserMarker.remove();
-                    mUserMarker = null;
-                }
-                mMarkLatLngMap = null;
+                clearSelection();
                 onMockPositionUpdate(ServiceGo.sCurLng, ServiceGo.sCurLat);
 
                 if (GoUtils.isWifiEnabled(MainActivity.this)) {
@@ -973,11 +998,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                         .setAction("Action", null).show();
 
                 recordCurrentLocation(mMarkLatLngMap.longitude, mMarkLatLngMap.latitude);
-                if (mUserMarker != null) {
-                    mUserMarker.remove();
-                    mUserMarker = null;
-                }
-                mMarkLatLngMap = null;
+                clearSelection();
                 onMockPositionUpdate(ServiceGo.sCurLng, ServiceGo.sCurLat);
 
                 if (GoUtils.isWifiEnabled(MainActivity.this)) {
@@ -1129,17 +1150,18 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
             mAMap.moveCamera(cameraUpdate);
 
             markMap();
+            requestRegeo(mMarkLatLngMap.longitude, mMarkLatLngMap.latitude);
 
             double[] latLng = MapUtils.gcj2wgs(mMarkLatLngMap.longitude, mMarkLatLngMap.latitude);
 
             // mSearchList.setVisibility(View.GONE);
-            //搜索历史 插表参数
+            //搜索历史 插表参数（CUSTOM 列 = GCJ-02 地图显示坐标；WGS84 列 = 模拟注入坐标）
             ContentValues contentValues = new ContentValues();
             contentValues.put(DataBaseHistorySearch.DB_COLUMN_KEY, mMarkName);
             contentValues.put(DataBaseHistorySearch.DB_COLUMN_DESCRIPTION, ((TextView) view.findViewById(R.id.poi_address)).getText().toString());
             contentValues.put(DataBaseHistorySearch.DB_COLUMN_IS_LOCATION, DataBaseHistorySearch.DB_SEARCH_TYPE_RESULT);
-            contentValues.put(DataBaseHistorySearch.DB_COLUMN_LONGITUDE_CUSTOM, lng);
-            contentValues.put(DataBaseHistorySearch.DB_COLUMN_LATITUDE_CUSTOM, lat);
+            contentValues.put(DataBaseHistorySearch.DB_COLUMN_LONGITUDE_CUSTOM, String.valueOf(mMarkLatLngMap.longitude));
+            contentValues.put(DataBaseHistorySearch.DB_COLUMN_LATITUDE_CUSTOM, String.valueOf(mMarkLatLngMap.latitude));
             contentValues.put(DataBaseHistorySearch.DB_COLUMN_LONGITUDE_WGS84, String.valueOf(latLng[0]));
             contentValues.put(DataBaseHistorySearch.DB_COLUMN_LATITUDE_WGS84, String.valueOf(latLng[1]));
             contentValues.put(DataBaseHistorySearch.DB_COLUMN_TIMESTAMP, System.currentTimeMillis() / 1000);
@@ -1147,6 +1169,15 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
             DataBaseHistorySearch.saveHistorySearch(mSearchHistoryDB, contentValues);
             mSearchLayout.setVisibility(View.INVISIBLE);
             searchItem.collapseActionView();
+        });
+        // 搜索结果长按：直接收藏（名称/地址/坐标均来自条目数据）
+        mSearchList.setOnItemLongClickListener((parent, view, position, id) -> {
+            String name = ((TextView) view.findViewById(R.id.poi_name)).getText().toString();
+            String address = ((TextView) view.findViewById(R.id.poi_address)).getText().toString();
+            String lng = ((TextView) view.findViewById(R.id.poi_longitude)).getText().toString();
+            String lat = ((TextView) view.findViewById(R.id.poi_latitude)).getText().toString();
+            showFavoriteDialog(name, address, Double.parseDouble(lng), Double.parseDouble(lat));
+            return true;
         });
         //搜索历史列表的点击监听
         mSearchHistoryList = findViewById(R.id.search_history_list_view);
@@ -1165,19 +1196,20 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                 mAMap.moveCamera(cameraUpdate);
 
                 markMap();
+                requestRegeo(mMarkLatLngMap.longitude, mMarkLatLngMap.latitude);
 
                 double[] latLng = MapUtils.gcj2wgs(mMarkLatLngMap.longitude, mMarkLatLngMap.latitude);
 
                 //设置列表不可见
                 mHistoryLayout.setVisibility(View.INVISIBLE);
                 searchItem.collapseActionView();
-                //更新表
+                //更新表（CUSTOM 列 = GCJ-02 地图显示坐标）
                 ContentValues contentValues = new ContentValues();
                 contentValues.put(DataBaseHistorySearch.DB_COLUMN_KEY, searchKey);
                 contentValues.put(DataBaseHistorySearch.DB_COLUMN_DESCRIPTION, searchDescription);
                 contentValues.put(DataBaseHistorySearch.DB_COLUMN_IS_LOCATION, DataBaseHistorySearch.DB_SEARCH_TYPE_RESULT);
-                contentValues.put(DataBaseHistorySearch.DB_COLUMN_LONGITUDE_CUSTOM, lng);
-                contentValues.put(DataBaseHistorySearch.DB_COLUMN_LATITUDE_CUSTOM, lat);
+                contentValues.put(DataBaseHistorySearch.DB_COLUMN_LONGITUDE_CUSTOM, String.valueOf(mMarkLatLngMap.longitude));
+                contentValues.put(DataBaseHistorySearch.DB_COLUMN_LATITUDE_CUSTOM, String.valueOf(mMarkLatLngMap.latitude));
                 contentValues.put(DataBaseHistorySearch.DB_COLUMN_LONGITUDE_WGS84, String.valueOf(latLng[0]));
                 contentValues.put(DataBaseHistorySearch.DB_COLUMN_LATITUDE_WGS84, String.valueOf(latLng[1]));
                 contentValues.put(DataBaseHistorySearch.DB_COLUMN_TIMESTAMP, System.currentTimeMillis() / 1000);

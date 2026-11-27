@@ -138,6 +138,7 @@
     <string name="fav_added">已收藏</string>
     <string name="fav_deleted">已删除收藏</string>
     <string name="fav_none">暂无收藏位置</string>
+    <string name="fav_delete_confirm">确定删除这条收藏吗？</string>
     <string name="history_none">暂无历史位置</string>
     <string name="zoom_in">放大</string>
     <string name="zoom_out">缩小</string>
