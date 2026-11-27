@@ -50,6 +50,6 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
       
-      # 启动构建
+      # 启动构建（debug 包：release 签名 keystore 不入库，正式签名由 build-release.yml 负责）
       - name: Build with Gradle
-        run: ./gradlew build
+        run: ./gradlew assembleDebug
