@@ -581,7 +581,8 @@ public class JoyStick extends View {
             InputtipsQuery query = new InputtipsQuery(keyword, MainActivity.mCurrentCity == null ? "" : MainActivity.mCurrentCity);
             query.setCityLimit(false);      // 不严格限定当前城市
             mInputtips = new Inputtips(mContext.getApplicationContext(), query);
-            mInputtips.setInputtipsListener((tips, rCode) -> {
+            android.os.Handler mainHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+            mInputtips.setInputtipsListener((tips, rCode) -> mainHandler.post(() -> {
                 if (rCode == 1000 && tips != null && !tips.isEmpty()) {
                     List<Map<String, Object>> data = new ArrayList<>();
 
@@ -609,7 +610,7 @@ public class JoyStick extends View {
                 } else if (rCode != 1000) {
                     GoUtils.DisplayToast(mContext, getResources().getString(R.string.app_error_search));
                 }
-            });
+            }));
             mInputtips.requestInputtipsAsyn();
         } catch (Exception e) {
             GoUtils.DisplayToast(mContext, getResources().getString(R.string.app_error_search));

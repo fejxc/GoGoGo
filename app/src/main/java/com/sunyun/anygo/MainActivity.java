@@ -361,7 +361,8 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                     contentValues.put(DataBaseHistorySearch.DB_COLUMN_TIMESTAMP, System.currentTimeMillis() / 1000);
 
                     DataBaseHistorySearch.saveHistorySearch(mSearchHistoryDB, contentValues);
-                    mAMap.clear();
+                    // 不再整图 clear()：标记均已定向管理（markMap 会替换选点图钉），
+                    // 整图 clear 会把运行中的模拟标记变僵尸，传送时触发 SDK 异常闪退
                     mSearchLayout.setVisibility(View.INVISIBLE);
                 } catch (Exception e) {
                     GoUtils.DisplayToast(MainActivity.this, getResources().getString(R.string.app_error_search));
@@ -548,16 +549,18 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                 }
 
                 String address = regeocodeResult.getRegeocodeAddress().getFormatAddress();
-                mMarkName = address;
-                if (mMarkLatLngMap != null) {
-                    TextView poiLatitude = mPoiPanel.findViewById(R.id.poi_latitude);
-                    TextView poiLongitude = mPoiPanel.findViewById(R.id.poi_longitude);
-                    poiLatitude.setText(String.valueOf(mMarkLatLngMap.latitude));
-                    poiLongitude.setText(String.valueOf(mMarkLatLngMap.longitude));
-                }
-                TextView poiAddress = mPoiPanel.findViewById(R.id.poi_address);
-                poiAddress.setText(address);
-                mPoiPanel.setVisibility(View.VISIBLE);
+                runOnUiThread(() -> {
+                    mMarkName = address;
+                    if (mMarkLatLngMap != null) {
+                        TextView poiLatitude = mPoiPanel.findViewById(R.id.poi_latitude);
+                        TextView poiLongitude = mPoiPanel.findViewById(R.id.poi_longitude);
+                        poiLatitude.setText(String.valueOf(mMarkLatLngMap.latitude));
+                        poiLongitude.setText(String.valueOf(mMarkLatLngMap.longitude));
+                    }
+                    TextView poiAddress = mPoiPanel.findViewById(R.id.poi_address);
+                    poiAddress.setText(address);
+                    mPoiPanel.setVisibility(View.VISIBLE);
+                });
             }
 
             @Override
@@ -905,13 +908,13 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         // 参数为 WGS-84（注入系统的模拟值），显示需转 GCJ-02
         double[] gcj = MapUtils.wgs2gcj02(lng, lat);
         LatLng pos = new LatLng(gcj[1], gcj[0]);
-        if (mMockMarker == null) {
-            mMockMarker = mAMap.addMarker(new MarkerOptions().position(pos)
-                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE))
-                    .title(getResources().getString(R.string.mock_marker_title)));
-        } else {
-            mMockMarker.setPosition(pos);
+        // 每次移除重建（remove 对已移除标记是安全空操作），不复用任何可能已失效的标记对象
+        if (mMockMarker != null) {
+            mMockMarker.remove();
         }
+        mMockMarker = mAMap.addMarker(new MarkerOptions().position(pos)
+                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE))
+                .title(getResources().getString(R.string.mock_marker_title)));
 
         mStatusChip.setText(getResources().getString(R.string.status_mocking,
                 String.format("%.5f, %.5f", lng, lat)));
@@ -1280,7 +1283,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
             InputtipsQuery query = new InputtipsQuery(keyword, mCurrentCity == null ? "" : mCurrentCity);
             query.setCityLimit(false);      // 不严格限定当前城市
             mInputtips = new Inputtips(getApplicationContext(), query);
-            mInputtips.setInputtipsListener((tips, rCode) -> {
+            mInputtips.setInputtipsListener((tips, rCode) -> runOnUiThread(() -> {
                 // rCode 1000 表示请求成功，参见 AMapException.CODE_AMAP_SUCCESS
                 if (rCode == 1000 && tips != null && !tips.isEmpty()) {
                     List<Map<String, Object>> data = getMapList(tips);
@@ -1300,7 +1303,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                     XLog.e("搜索失败 rCode=" + rCode);
                     GoUtils.DisplayToast(MainActivity.this, getResources().getString(R.string.app_error_search));
                 }
-            });
+            }));
             mInputtips.requestInputtipsAsyn();
         } catch (Exception e) {
             GoUtils.DisplayToast(MainActivity.this, getResources().getString(R.string.app_error_search));
