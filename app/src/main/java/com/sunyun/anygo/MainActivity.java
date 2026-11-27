@@ -850,8 +850,16 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     private LatLng mRegeoTarget;    // 在途逆地理请求的目标点，回调到达时校验避免覆盖新选点
 
     private void requestRegeo(double lng, double lat) {
-        mRegeoTarget = new LatLng(lat, lng);
-        mGeocodeSearch.getFromLocationAsyn(new RegeocodeQuery(new LatLonPoint(lat, lng), 200, GeocodeSearch.AMAP));
+        if (mGeocodeSearch == null) {
+            XLog.e("requestRegeo: mGeocodeSearch is null");
+            return;
+        }
+        try {
+            mRegeoTarget = new LatLng(lat, lng);
+            mGeocodeSearch.getFromLocationAsyn(new RegeocodeQuery(new LatLonPoint(lat, lng), 200, GeocodeSearch.AMAP));
+        } catch (Throwable t) {
+            XLog.e("requestRegeo error", t);
+        }
     }
 
     /** 清除当前选点：移除图钉并收起信息面板 */
@@ -1151,6 +1159,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
 
         mSearchList = findViewById(R.id.search_list_view);
         mSearchList.setOnItemClickListener((parent, view, position, id) -> {
+            try {
             String lng = ((TextView) view.findViewById(R.id.poi_longitude)).getText().toString();
             String lat = ((TextView) view.findViewById(R.id.poi_latitude)).getText().toString();
             mMarkName = ((TextView) view.findViewById(R.id.poi_name)).getText().toString();
@@ -1178,6 +1187,11 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
             DataBaseHistorySearch.saveHistorySearch(mSearchHistoryDB, contentValues);
             mSearchLayout.setVisibility(View.INVISIBLE);
             searchItem.collapseActionView();
+            } catch (Throwable t) {
+                // 崩溃转提示：堆栈进 XLog（问题反馈可分享），便于定位
+                XLog.e("search result click error", t);
+                GoUtils.DisplayToast(MainActivity.this, "点击异常: " + t.getClass().getSimpleName() + " - " + t.getMessage());
+            }
         });
         // 搜索结果长按：直接收藏（名称/地址/坐标均来自条目数据）
         mSearchList.setOnItemLongClickListener((parent, view, position, id) -> {
@@ -1191,6 +1205,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         //搜索历史列表的点击监听
         mSearchHistoryList = findViewById(R.id.search_history_list_view);
         mSearchHistoryList.setOnItemClickListener((parent, view, position, id) -> {
+            try {
             String searchDescription = ((TextView) view.findViewById(R.id.search_description)).getText().toString();
             String searchKey = ((TextView) view.findViewById(R.id.search_key)).getText().toString();
             String searchIsLoc = ((TextView) view.findViewById(R.id.search_isLoc)).getText().toString();
@@ -1226,14 +1241,13 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
 
                 DataBaseHistorySearch.saveHistorySearch(mSearchHistoryDB, contentValues);
             } else if (searchIsLoc.equals("0")) { //如果仅仅是搜索
-                try {
-                    searchView.setQuery(searchKey, true);
-                } catch (Exception e) {
-                    GoUtils.DisplayToast(this, getResources().getString(R.string.app_error_search));
-                    XLog.e(getResources().getString(R.string.app_error_search));
-                }
+                searchView.setQuery(searchKey, true);
             } else {
                 XLog.e(getResources().getString(R.string.app_error_param));
+            }
+            } catch (Throwable t) {
+                XLog.e("search history click error", t);
+                GoUtils.DisplayToast(MainActivity.this, "点击异常: " + t.getClass().getSimpleName() + " - " + t.getMessage());
             }
         });
         mSearchHistoryList.setOnItemLongClickListener((parent, view, position, id) -> {

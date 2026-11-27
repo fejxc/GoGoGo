@@ -29,6 +29,29 @@ public class GoApplication extends Application {
 
         initXlog();
 
+        // 崩溃黑匣子：未捕获异常写入 XLog（问题反馈分享的日志）与独立 crash 文件，随后按系统默认流程退出
+        final Thread.UncaughtExceptionHandler systemHandler = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            try {
+                XLog.e("UNCAUGHT CRASH on " + thread.getName(), throwable);
+                File dir = getExternalFilesDir("Logs");
+                if (dir != null) {
+                    File crashFile = new File(dir, "crash-" + System.currentTimeMillis() + ".txt");
+                    try (java.io.FileOutputStream fos = new java.io.FileOutputStream(crashFile)) {
+                        fos.write(("Thread: " + thread.getName() + "\n\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        fos.write(android.util.Log.getStackTraceString(throwable).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+            if (systemHandler != null) {
+                systemHandler.uncaughtException(thread, throwable);
+            } else {
+                android.os.Process.killProcess(android.os.Process.myPid());
+                System.exit(10);
+            }
+        });
+
         // 高德 SDK 8.1.0 起要求先调用隐私合规接口，否则 SDK 无法工作
         MapsInitializer.updatePrivacyShow(this, true, true);
         MapsInitializer.updatePrivacyAgree(this, true);
