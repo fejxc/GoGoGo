@@ -470,7 +470,9 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                         GoUtils.DisplayToast(this, getResources().getString(R.string.app_error_dev));
                     }
                 }
-            /* 检测更新入口已随菜单项移除，待稳定版发布后恢复（预留 checkUpdateVersion） */
+            } else if (id == R.id.nav_update) {
+                // 手动检测更新
+                checkUpdateVersion(true);
             } else if (id == R.id.nav_feedback) {
                 // 问题反馈：跳转本仓库 Issues
                 Uri issueUri = Uri.parse("https://github.com/fejxc/GoGoGo/issues");
